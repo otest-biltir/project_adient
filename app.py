@@ -482,11 +482,6 @@ class SledAnalyzerApp(QMainWindow):
         max_acc_t = df_plot.loc[a_idx, 'Offset_Time'] if not pd.isna(a_idx) else 0
         self.ax.vlines(x=max_acc_t, ymin=0, ymax=max_acc, colors=acc_color, linestyles='--', linewidth=1, alpha=0.7)
         
-        # Dual axis (gerekirse hız gösterebilir ama sadece eksen var fotoda)
-        self.ax2 = self.ax.twinx()
-        self.ax2.set_ylabel("Velocity, (m/s)")
-        # Sadece ekseni göstermek için dummy ayar, veri yok.
-        
         max_t_acc = "-"
         max_t_acc_t = "-"
         l2 = []
