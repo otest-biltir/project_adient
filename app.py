@@ -1,6 +1,31 @@
 import sys
 import os
 import shutil
+
+
+def _configure_qt_plugin_path_for_windows():
+    """Windows'ta Qt platform plugin yolunu güvenli şekilde ayarlar."""
+    if os.name != "nt":
+        return
+
+    current = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "").strip()
+    if current and os.path.isdir(current):
+        return
+
+    try:
+        import PyQt5
+    except Exception:
+        return
+
+    pyqt_root = os.path.dirname(PyQt5.__file__)
+    candidate = os.path.join(pyqt_root, "Qt5", "plugins", "platforms")
+
+    if os.path.isdir(candidate):
+        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = candidate
+
+
+_configure_qt_plugin_path_for_windows()
+
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QMessageBox, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QScrollArea, QFrame
 from PyQt5.QtCore import Qt
 
