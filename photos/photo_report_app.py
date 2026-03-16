@@ -1,7 +1,4 @@
 import os
-import math
-import tempfile
-from copy import deepcopy
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
@@ -22,7 +19,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 from docxtpl import DocxTemplate, InlineImage
-from docx import Document
 from docx.shared import Mm
 
 import shared.global_data as global_data
@@ -206,69 +202,60 @@ class PhotoReportApp(QMainWindow):
         }
 
     def _chunk_photos(self, photos, size=6):
-        if not photos:
-            return [[]]
-
         return [photos[idx : idx + size] for idx in range(0, len(photos), size)]
 
-    def _build_page_context(self, doc, photos_chunk, page_no):
-        slots = [InlineImage(doc, image_path, width=Mm(55)) for image_path in photos_chunk]
-        while len(slots) < 6:
-            slots.append("")
+    def _build_pages_context(self, doc, photos):
+        photo_groups = self._chunk_photos(photos, size=6)
+        pages = []
 
-        context = self._build_global_context()
-        context["PAGE_NO"] = page_no
+        for page_index, group in enumerate(photo_groups, start=1):
+            slots = [InlineImage(doc, image_path, width=Mm(55)) for image_path in group]
+            while len(slots) < 6:
+                slots.append("")
 
-        # Template uyumluluğu için farklı placeholder yazımlarını birlikte doldur.
-        for idx in range(6):
-            value = slots[idx]
-            one_based = idx + 1
-            context[f"PHOTO_{one_based}"] = value
-            context[f"photo_{one_based}"] = value
-            context[f"SLOT_{one_based}"] = value
-            context[f"slot_{one_based}"] = value
+            page_data = {
+                "photo1": slots[0],
+                "photo2": slots[1],
+                "photo3": slots[2],
+                "photo4": slots[3],
+                "photo5": slots[4],
+                "photo6": slots[5],
+                "page_no": page_index,
+            }
+            pages.append(page_data)
 
-        return context
+        return pages
 
-    def _append_document_body(self, destination_doc, source_doc):
-        for element in source_doc.element.body:
-            if element.tag.endswith("}sectPr"):
-                continue
-            destination_doc.element.body.insert_element_before(deepcopy(element), "w:sectPr")
+    def _debug_category_render(self, category, photos, pages):
+        print(f"[PhotoReport] category={category} selected_photo_count={len(photos)}")
+        print(f"[PhotoReport] category={category} page_group_count={len(pages)}")
+
+        if pages:
+            context_keys = sorted(pages[0].keys())
+            print(f"[PhotoReport] category={category} page_context_keys={context_keys}")
+
+        for page_idx, page in enumerate(pages, start=1):
+            for slot_idx in range(1, 7):
+                photo_idx = (page_idx - 1) * 6 + (slot_idx - 1)
+                photo_path = photos[photo_idx] if photo_idx < len(photos) else "<EMPTY>"
+                print(f"[PhotoReport] category={category} page={page_idx} slot=photo{slot_idx} source={photo_path}")
 
     def _render_category_report(self, category, output_path):
         template_path = self._resolve_template_path(category)
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template bulunamadı: {template_path}")
 
-        photo_chunks = self._chunk_photos(self.selected_files[category], size=6)
-        rendered_page_paths = []
+        doc = DocxTemplate(template_path)
+        pages = self._build_pages_context(doc, self.selected_files[category])
+        self._debug_category_render(category, self.selected_files[category], pages)
 
-        try:
-            for page_no, chunk in enumerate(photo_chunks, start=1):
-                page_doc = DocxTemplate(template_path)
-                page_context = self._build_page_context(page_doc, chunk, page_no)
-                page_doc.render(page_context)
+        context = self._build_global_context()
+        context["pages"] = pages
+        context["PAGES"] = pages
+        print(f"[PhotoReport] category={category} render_context_keys={sorted(context.keys())}")
 
-                with tempfile.NamedTemporaryFile(prefix=f"photo_page_{category.lower()}_", suffix=".docx", delete=False) as tmp:
-                    temp_page_path = tmp.name
-
-                page_doc.save(temp_page_path)
-                rendered_page_paths.append(temp_page_path)
-
-            merged_doc = Document(rendered_page_paths[0])
-            for page_path in rendered_page_paths[1:]:
-                merged_doc.add_page_break()
-                next_doc = Document(page_path)
-                self._append_document_body(merged_doc, next_doc)
-
-            merged_doc.save(output_path)
-        finally:
-            for page_path in rendered_page_paths:
-                try:
-                    os.remove(page_path)
-                except OSError:
-                    pass
+        doc.render(context)
+        doc.save(output_path)
 
     def generate_reports(self):
         selected_categories = [key for key, files in self.selected_files.items() if files]
