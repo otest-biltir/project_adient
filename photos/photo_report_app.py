@@ -18,8 +18,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from docxtpl import DocxTemplate, InlineImage
+from docx import Document
 from docx.shared import Mm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import shared.global_data as global_data
 
@@ -175,6 +176,11 @@ class PhotoReportApp(QMainWindow):
         os.makedirs(out_dir, exist_ok=True)
         return out_dir
 
+    def _ensure_category_output_dir(self, category):
+        output_dir = os.path.join(self._ensure_output_dir(), category.lower())
+        os.makedirs(output_dir, exist_ok=True)
+        return output_dir
+
     def _resolve_template_path(self, category):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         template_name = self.CATEGORIES[category]["template"]
@@ -194,59 +200,61 @@ class PhotoReportApp(QMainWindow):
 
         return candidate
 
-    def _build_global_context(self):
-        return {
-            "TEST_NO": global_data.config.get("TEST_NO", ""),
-            "TEST_DATE": global_data.config.get("TEST_DATE", ""),
-            "PROJECT": global_data.config.get("PROJECT", ""),
-        }
-
     def _chunk_photos(self, photos, size=6):
         return [photos[idx : idx + size] for idx in range(0, len(photos), size)]
 
-    def _build_render_context(self, category, doc, photos):
-        photo_chunks = self._chunk_photos(photos, size=6)
-        print(f"[PhotoReport][{category}] selected photo count: {len(photos)}")
-        print(f"[PhotoReport][{category}] page group count: {len(photo_chunks)}")
+    def _clear_document_content(self, doc):
+        body = doc.element.body
+        for child in list(body):
+            if child.tag.endswith("sectPr"):
+                continue
+            body.remove(child)
 
-        pages = []
-        for page_no, chunk in enumerate(photo_chunks, start=1):
-            page = {}
-            for slot in range(1, 7):
-                image_index = slot - 1
-                if image_index < len(chunk):
-                    image_path = chunk[image_index]
-                    page[f"photo{slot}"] = InlineImage(doc, image_path, width=Mm(55))
-                    page[f"photo_{slot}"] = page[f"photo{slot}"]
-                    print(f"[PhotoReport][{category}] page {page_no} slot {slot}: {image_path}")
-                else:
-                    page[f"photo{slot}"] = ""
-                    page[f"photo_{slot}"] = ""
-                    print(f"[PhotoReport][{category}] page {page_no} slot {slot}: <EMPTY>")
+    def _fill_cell_with_photo(self, cell, image_path):
+        paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+        run = paragraph.add_run()
+        run.add_picture(image_path, width=Mm(80))
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            page["PAGE_NO"] = page_no
-            page["page_no"] = page_no
-            page["page_break"] = "\f"
-            pages.append(page)
+    def _add_photo_page(self, doc, chunk):
+        table = doc.add_table(rows=2, cols=3)
+        table.autofit = True
 
-        context = self._build_global_context()
-        context["pages"] = pages
-        context["PAGES"] = pages
-        context["PAGE_BREAK"] = "\f"
+        for idx in range(6):
+            row = idx // 3
+            col = idx % 3
+            if idx < len(chunk):
+                self._fill_cell_with_photo(table.cell(row, col), chunk[idx])
 
-        print(f"[PhotoReport][{category}] render context keys: {sorted(context.keys())}")
-        print(f"[PhotoReport][{category}] page keys: {sorted(pages[0].keys()) if pages else []}")
-        return context
-
-    def _render_category_report(self, category, output_path):
+    def _render_category_report(self, category, output_path, progress_state):
         template_path = self._resolve_template_path(category)
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template bulunamadı: {template_path}")
 
-        doc = DocxTemplate(template_path)
-        context = self._build_render_context(category, doc, self.selected_files[category])
-        doc.render(context)
+        photos = self.selected_files[category]
+        photo_chunks = self._chunk_photos(photos, size=6)
+
+        doc = Document(template_path)
+        self._clear_document_content(doc)
+
+        for page_index, chunk in enumerate(photo_chunks):
+            self._add_photo_page(doc, chunk)
+            if page_index < len(photo_chunks) - 1:
+                doc.add_page_break()
+
+            progress_state["done"] += len(chunk)
+            self.progress.setValue(progress_state["done"])
+            self.progress.setFormat(
+                f"%p - {self.CATEGORIES[category]['title']} sayfa {page_index + 1}/{len(photo_chunks)} hazırlanıyor"
+            )
+            QApplication.processEvents()
+
         doc.save(output_path)
+
+        progress_state["done"] += 1
+        self.progress.setValue(progress_state["done"])
+        self.progress.setFormat(f"%p - {self.CATEGORIES[category]['title']} oluşturuldu")
+        QApplication.processEvents()
 
     def generate_reports(self):
         selected_categories = [key for key, files in self.selected_files.items() if files]
@@ -254,28 +262,30 @@ class PhotoReportApp(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Rapor üretmek için en az bir kategoriye fotoğraf ekleyin.")
             return
 
-        output_dir = self._ensure_output_dir()
+        output_root = self._ensure_output_dir()
+        total_photo_count = sum(len(self.selected_files[category]) for category in selected_categories)
+        total_steps = total_photo_count + len(selected_categories)
+
         self.progress.setMinimum(0)
-        self.progress.setMaximum(len(selected_categories))
+        self.progress.setMaximum(max(1, total_steps))
         self.progress.setValue(0)
+        self.progress.setFormat("Hazırlanıyor")
 
         created_files = []
+        progress_state = {"done": 0}
 
         try:
-            for step, category in enumerate(selected_categories, start=1):
+            for category in selected_categories:
+                output_dir = self._ensure_category_output_dir(category)
                 output_path = self._safe_output_name(category, output_dir)
-                self._render_category_report(category, output_path)
+                self._render_category_report(category, output_path, progress_state)
                 created_files.append(output_path)
-
-                self.progress.setValue(step)
-                self.progress.setFormat(f"%p - {self.CATEGORIES[category]['title']} oluşturuldu")
-                QApplication.processEvents()
 
             result_text = "\n".join(created_files)
             QMessageBox.information(
                 self,
                 "Başarılı",
-                f"{len(created_files)} rapor başarıyla oluşturuldu.\n\nÇıktılar:\n{result_text}",
+                f"{len(created_files)} rapor başarıyla oluşturuldu.\n\nÇıktı kökü:\n{output_root}\n\nDosyalar:\n{result_text}",
             )
         except Exception as exc:
             QMessageBox.critical(self, "Hata", f"Rapor oluşturulurken hata oluştu:\n{exc}")
