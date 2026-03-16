@@ -37,6 +37,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPu
 from PyQt5.QtCore import Qt
 
 from spul.spul_app import SledAnalyzerApp
+from photos.photo_report_app import PhotoReportApp
 import shared.global_data as global_data
 import kapak.kapak_app as kapak_app
 
@@ -173,6 +174,11 @@ class MainApp(QMainWindow):
         btn_spul.setStyleSheet("font-size: 16px; padding: 15px; background-color: #4CAF50; color: white; font-weight: bold;")
         btn_spul.clicked.connect(self.open_spul_app)
         layout.addWidget(btn_spul)
+
+        btn_photo_report = QPushButton("Photo Report Modülünü Aç")
+        btn_photo_report.setStyleSheet("font-size: 16px; padding: 15px; background-color: #9C27B0; color: white; font-weight: bold;")
+        btn_photo_report.clicked.connect(self.open_photo_report_app)
+        layout.addWidget(btn_photo_report)
         
         layout.addStretch()
         
@@ -223,6 +229,11 @@ class MainApp(QMainWindow):
         self.hide()
         self.spul_window = SledAnalyzerApp(main_window=self)
         self.spul_window.show()
+
+    def open_photo_report_app(self):
+        self.hide()
+        self.photo_report_window = PhotoReportApp(main_window=self)
+        self.photo_report_window.show()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
