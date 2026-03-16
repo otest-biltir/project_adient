@@ -1,5 +1,6 @@
 import os
-import math
+from copy import deepcopy
+from io import BytesIO
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
@@ -20,6 +21,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 from docxtpl import DocxTemplate, InlineImage
+from docx import Document
 from docx.shared import Mm
 
 import shared.global_data as global_data
@@ -195,41 +197,95 @@ class PhotoReportApp(QMainWindow):
 
         return candidate
 
-    def _build_pages_context(self, doc, photos):
+    def _chunks_of_six(self, photos):
         slots_per_page = 6
-        page_count = max(1, math.ceil(len(photos) / slots_per_page))
-        pages = []
+        groups = []
+        for start in range(0, len(photos), slots_per_page):
+            chunk = photos[start : start + slots_per_page]
+            while len(chunk) < slots_per_page:
+                chunk.append("")
+            groups.append(chunk)
 
-        for page_idx in range(page_count):
-            start = page_idx * slots_per_page
-            end = start + slots_per_page
-            chunk = photos[start:end]
+        if not groups:
+            groups.append(["", "", "", "", "", ""])
 
-            slots = []
-            for image_path in chunk:
-                slots.append(InlineImage(doc, image_path, width=Mm(55)))
+        return groups
 
-            while len(slots) < slots_per_page:
-                slots.append("")
-
-            pages.append(
-                {
-                    "PHOTO_1": slots[0],
-                    "PHOTO_2": slots[1],
-                    "PHOTO_3": slots[2],
-                    "PHOTO_4": slots[3],
-                    "PHOTO_5": slots[4],
-                    "PHOTO_6": slots[5],
-                    "PAGE_NO": page_idx + 1,
-                }
-            )
+    def _slot_context(self, doc, photo_chunk, page_no):
+        def _inline(path):
+            return InlineImage(doc, path, width=Mm(55)) if path else ""
 
         return {
             "TEST_NO": global_data.config.get("TEST_NO", ""),
             "TEST_DATE": global_data.config.get("TEST_DATE", ""),
             "PROJECT": global_data.config.get("PROJECT", ""),
-            "PAGES": pages,
+            "PAGE_NO": page_no,
+            # Common placeholder variants used in templates.
+            "slot_1": _inline(photo_chunk[0]),
+            "slot_2": _inline(photo_chunk[1]),
+            "slot_3": _inline(photo_chunk[2]),
+            "slot_4": _inline(photo_chunk[3]),
+            "slot_5": _inline(photo_chunk[4]),
+            "slot_6": _inline(photo_chunk[5]),
+            "SLOT_1": _inline(photo_chunk[0]),
+            "SLOT_2": _inline(photo_chunk[1]),
+            "SLOT_3": _inline(photo_chunk[2]),
+            "SLOT_4": _inline(photo_chunk[3]),
+            "SLOT_5": _inline(photo_chunk[4]),
+            "SLOT_6": _inline(photo_chunk[5]),
+            "PHOTO_1": _inline(photo_chunk[0]),
+            "PHOTO_2": _inline(photo_chunk[1]),
+            "PHOTO_3": _inline(photo_chunk[2]),
+            "PHOTO_4": _inline(photo_chunk[3]),
+            "PHOTO_5": _inline(photo_chunk[4]),
+            "PHOTO_6": _inline(photo_chunk[5]),
         }
+
+    def _render_template_page(self, template_path, photos_for_page, page_no):
+        doc_tpl = DocxTemplate(template_path)
+        context = self._slot_context(doc_tpl, photos_for_page, page_no)
+        doc_tpl.render(context)
+
+        mem = BytesIO()
+        doc_tpl.save(mem)
+        mem.seek(0)
+        return Document(mem)
+
+    def _append_document_body(self, target_doc, source_doc):
+        target_body = target_doc.element.body
+        source_body = source_doc.element.body
+
+        target_sectpr = target_body.sectPr
+        if target_sectpr is not None:
+            target_body.remove(target_sectpr)
+
+        for child in source_body:
+            if child.tag.endswith("sectPr"):
+                continue
+            target_body.append(deepcopy(child))
+
+        source_sectpr = source_body.sectPr
+        if source_sectpr is not None:
+            target_body.append(deepcopy(source_sectpr))
+
+    def _generate_single_category_report(self, category, output_dir):
+        template_path = self._resolve_template_path(category)
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Template bulunamadı: {template_path}")
+
+        chunks = self._chunks_of_six(list(self.selected_files[category]))
+        merged_doc = None
+
+        for page_no, chunk in enumerate(chunks, start=1):
+            rendered_page = self._render_template_page(template_path, chunk, page_no)
+            if merged_doc is None:
+                merged_doc = rendered_page
+            else:
+                self._append_document_body(merged_doc, rendered_page)
+
+        output_path = self._safe_output_name(category, output_dir)
+        merged_doc.save(output_path)
+        return output_path
 
     def generate_reports(self):
         selected_categories = [key for key, files in self.selected_files.items() if files]
@@ -246,16 +302,7 @@ class PhotoReportApp(QMainWindow):
 
         try:
             for step, category in enumerate(selected_categories, start=1):
-                template_path = self._resolve_template_path(category)
-                if not os.path.exists(template_path):
-                    raise FileNotFoundError(f"Template bulunamadı: {template_path}")
-
-                doc = DocxTemplate(template_path)
-                context = self._build_pages_context(doc, self.selected_files[category])
-                doc.render(context)
-
-                output_path = self._safe_output_name(category, output_dir)
-                doc.save(output_path)
+                output_path = self._generate_single_category_report(category, output_dir)
                 created_files.append(output_path)
 
                 self.progress.setValue(step)
