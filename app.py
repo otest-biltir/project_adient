@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import importlib
+from pathlib import Path
 
 
 def _ensure_dependencies():
@@ -32,6 +33,34 @@ def _ensure_dependencies():
 
 
 _ensure_dependencies()
+
+
+def _configure_qt_environment():
+    """
+    Qt platform/plugin ayarlarını çalışma ortamına göre güvenli hale getirir.
+    Özellikle Windows dışında `QT_QPA_PLATFORM=windows` kaldığında uygulama açılmaz.
+    """
+    current_platform = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
+    if current_platform == "windows" and sys.platform != "win32":
+        # Linux/macOS üzerinde yanlış "windows" platformu atanmışsa temizle.
+        os.environ.pop("QT_QPA_PLATFORM", None)
+
+    # PyQt5 plugin dizinini açıkça tanımlamak, bozuk/eksik PATH durumlarında yardımcı olur.
+    pyqt_root = Path(sys.executable).resolve().parent
+    candidates = [
+        pyqt_root / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",  # Windows venv
+        pyqt_root / "lib" / "python3.12" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
+        pyqt_root / "lib" / "python3.11" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
+        pyqt_root / "lib" / "python3.10" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
+    ]
+    if not os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH"):
+        for platform_dir in candidates:
+            if platform_dir.exists():
+                os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_dir)
+                break
+
+
+_configure_qt_environment()
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QMessageBox, QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QComboBox, QScrollArea, QFrame
 from PyQt5.QtCore import Qt
