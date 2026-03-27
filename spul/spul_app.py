@@ -323,22 +323,24 @@ class SledAnalyzerApp(QMainWindow):
             
             # Formül gereksinimi kontrol et (Spul = V^2 / t)
             if 'Velocity' in self.df_actual.columns and 'Time' in self.df_actual.columns:
-                self.df_actual['Spul'] = np.where(
+                self.df_actual['Spul_Raw'] = np.where(
                     (self.df_actual['Time'] != 0) & (self.df_actual['Time'].notna()), 
                     (self.df_actual['Velocity']**2) / self.df_actual['Time'], 
                     0
                 )
+                self.df_actual['Spul'] = self.df_actual['Spul_Raw']
             
             if self.target_path:
                 df_target_raw = pd.read_excel(self.target_path)
                 self.df_target = self.process_data(df_target_raw)
                 
                 if 'Target Velocity' in self.df_target.columns and 'Time' in self.df_target.columns:
-                    self.df_target['Spul'] = np.where(
+                    self.df_target['Spul_Raw'] = np.where(
                         (self.df_target['Time'] != 0) & (self.df_target['Time'].notna()), 
                         (self.df_target['Target Velocity']**2) / self.df_target['Time'], 
                         0
                     )
+                    self.df_target['Spul'] = self.df_target['Spul_Raw']
             else:
                 self.df_target = None
 
@@ -351,6 +353,24 @@ class SledAnalyzerApp(QMainWindow):
         # Zamanı offset_sec kadar sola kaydır, negatifleri kes
         df_plot = self.df_actual.copy()
         df_plot['Offset_Time'] = df_plot['Time'] - offset_sec
+        if 'Velocity' in df_plot.columns:
+            # SPUL, grafikte kullanılan aktif zaman eksenine (Offset_Time) göre hesaplanır.
+            valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
+            df_plot['Spul'] = 0.0
+            df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
+        return df_plot[df_plot['Offset_Time'] >= 0]
+
+    def apply_offset_to_target(self, offset_sec):
+        if self.df_target is None:
+            return None
+        # Zamanı offset_sec kadar sola kaydır, negatifleri kes
+        df_plot = self.df_target.copy()
+        df_plot['Offset_Time'] = df_plot['Time'] - offset_sec
+        if 'Target Velocity' in df_plot.columns:
+            # SPUL, grafikte kullanılan aktif zaman eksenine (Offset_Time) göre hesaplanır.
+            valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
+            df_plot['Spul'] = 0.0
+            df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Target Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
         return df_plot[df_plot['Offset_Time'] >= 0]
 
     def _cleanup_axes(self):
@@ -367,13 +387,14 @@ class SledAnalyzerApp(QMainWindow):
             
         offset_sec = self.get_current_offset_sec()
         df_plot = self.apply_offset_to_actual(offset_sec)
+        df_target_plot = self.apply_offset_to_target(offset_sec)
         
         self._cleanup_axes()
         
         idx = self.current_graph_idx
         
         if idx == 0:
-            self._draw_spul(df_plot)
+            self._draw_spul(df_plot, df_target_plot)
         elif idx == 1:
             self._draw_acc_vel(df_plot)
         elif idx == 2:
@@ -382,7 +403,7 @@ class SledAnalyzerApp(QMainWindow):
         self.figure.tight_layout()
         self.canvas.draw()
 
-    def _draw_spul(self, df_plot):
+    def _draw_spul(self, df_plot, df_target_plot=None):
         if 'Spul' not in df_plot.columns:
             return
             
@@ -399,12 +420,12 @@ class SledAnalyzerApp(QMainWindow):
         
         max_target_spul = "-"
         max_target_time_ms = "-"
-        if self.df_target is not None and 'Spul' in self.df_target.columns:
-            self.ax.plot(self.df_target['Time'].values, self.df_target['Spul'].values, color=target_color, linewidth=2, linestyle='-', label="Target Spul")
-            max_target_spul = self.df_target['Spul'].max()
-            t_idx = self.df_target['Spul'].idxmax()
+        if df_target_plot is not None and 'Spul' in df_target_plot.columns:
+            self.ax.plot(df_target_plot['Offset_Time'].values, df_target_plot['Spul'].values, color=target_color, linewidth=2, linestyle='-', label="Target Spul")
+            max_target_spul = df_target_plot['Spul'].max()
+            t_idx = df_target_plot['Spul'].idxmax()
             if not pd.isna(t_idx):
-                max_target_time_sec = self.df_target.loc[t_idx, 'Time']
+                max_target_time_sec = df_target_plot.loc[t_idx, 'Offset_Time']
                 max_target_time_ms = max_target_time_sec * 1000.0
                 self.ax.vlines(x=max_target_time_sec, ymin=0, ymax=max_target_spul, colors=target_color, linestyles='--', linewidth=1, alpha=0.7)
 
