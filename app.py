@@ -67,8 +67,6 @@ from PyQt5.QtCore import Qt
 
 from spul.spul_app import SledAnalyzerApp
 import shared.global_data as global_data
-import kapak.kapak_app as kapak_app
-from photos.photo_report_app import PhotoReportApp
 
 class ReportDialog(QDialog):
     def __init__(self, parent=None):
@@ -194,16 +192,6 @@ class MainApp(QMainWindow):
         btn_global_info.clicked.connect(self.open_global_info)
         layout.addWidget(btn_global_info)
         
-        btn_kapak = QPushButton("Kapak Oluştur")
-        btn_kapak.setStyleSheet("font-size: 16px; padding: 15px; background-color: #FF9800; color: white; font-weight: bold;")
-        btn_kapak.clicked.connect(self.create_kapak)
-        layout.addWidget(btn_kapak)
-        
-        btn_photo_report = QPushButton("Photo Report Modülünü Aç")
-        btn_photo_report.setStyleSheet("font-size: 16px; padding: 15px; background-color: #673AB7; color: white; font-weight: bold;")
-        btn_photo_report.clicked.connect(self.open_photo_report_app)
-        layout.addWidget(btn_photo_report)
-
         btn_spul = QPushButton("Spul Uygulamasını Aç")
         btn_spul.setStyleSheet("font-size: 16px; padding: 15px; background-color: #4CAF50; color: white; font-weight: bold;")
         btn_spul.clicked.connect(self.open_spul_app)
@@ -242,18 +230,6 @@ class MainApp(QMainWindow):
             # Backward compatibility
             global_data.config["PROJECT"] = global_data.config["PROGRAM"]
             QMessageBox.information(self, "Başarılı", "Genel bilgiler kaydedildi.")
-
-    def create_kapak(self):
-        if not global_data.config["TEST_NO"] or not global_data.config["TEST_DATE"]:
-            QMessageBox.warning(self, "Uyarı", "Lütfen önce genel bilgileri eksiksiz girin!")
-            return
-        
-        kapak_app.generate_cover_report(self)
-
-    def open_photo_report_app(self):
-        self.hide()
-        self.photo_report_window = PhotoReportApp(main_window=self)
-        self.photo_report_window.show()
 
     def open_spul_app(self):
         if not global_data.config["TEST_NO"] or not global_data.config["TEST_DATE"] or not global_data.config["WO_NO"]:

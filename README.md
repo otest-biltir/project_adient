@@ -1,4 +1,6 @@
-# Sled Test Analyzer (Adient Sled Test Merkezi)
+# Sled Test Analyzer (SPUL)
+
+Bu sürümde uygulama yalnızca SPUL modülüyle çalışacak şekilde sadeleştirildi. Kapak ve Photo Report modülleri kaldırıldı.
 
 ## Kurulum
 
