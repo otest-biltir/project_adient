@@ -32,6 +32,9 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 
+MAX_GRAPH_TIME_SEC = 0.15
+
+
 class SledAnalyzerApp(QMainWindow):
     def __init__(self, main_window=None):
         super().__init__()
@@ -338,20 +341,40 @@ class SledAnalyzerApp(QMainWindow):
             valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
             df_plot['Spul'] = 0.0
             df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
-        return df_plot[df_plot['Offset_Time'] >= 0]
+        return df_plot[(df_plot['Offset_Time'] >= 0) & (df_plot['Offset_Time'] <= MAX_GRAPH_TIME_SEC)]
 
-    def apply_offset_to_target(self, offset_sec):
+    def apply_offset_to_target(self, offset_sec=None):
         if self.df_target is None:
             return None
-        # Zamanı offset_sec kadar sola kaydır, negatifleri kes
+        # Target verisi offsetten etkilenmez; kendi orijinal zaman ekseninde sabit kalır.
         df_plot = self.df_target.copy()
-        df_plot['Offset_Time'] = df_plot['Time'] - offset_sec
+        df_plot['Offset_Time'] = df_plot['Time']
         if 'Target Velocity' in df_plot.columns:
-            # SPUL, grafikte kullanılan aktif zaman eksenine (Offset_Time) göre hesaplanır.
             valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
-            df_plot['Spul'] = 0.0
+            df_plot['Spul'] = np.nan
             df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Target Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
-        return df_plot[df_plot['Offset_Time'] >= 0]
+        return df_plot[(df_plot['Offset_Time'] >= 0) & (df_plot['Offset_Time'] <= MAX_GRAPH_TIME_SEC)]
+
+    def _series_data(self, df, value_col):
+        series = df[['Offset_Time', value_col]].dropna()
+        return series[series['Offset_Time'] <= MAX_GRAPH_TIME_SEC]
+
+    def _set_time_xlim(self, *dfs):
+        max_times = []
+        for df in dfs:
+            if df is not None and 'Offset_Time' in df.columns:
+                times = df['Offset_Time'].dropna()
+                times = times[(times >= 0) & (times <= MAX_GRAPH_TIME_SEC)]
+                if not times.empty:
+                    max_times.append(times.max())
+        right = min(MAX_GRAPH_TIME_SEC, max(max_times)) if max_times else MAX_GRAPH_TIME_SEC
+        self.ax.set_xlim(left=0, right=max(right, 0.001))
+
+    def _max_value_and_time(self, series, value_col):
+        if series.empty or series[value_col].dropna().empty:
+            return np.nan, 0
+        idx = series[value_col].idxmax()
+        return series.loc[idx, value_col], series.loc[idx, 'Offset_Time']
 
     def _cleanup_axes(self):
         self.ax.clear()
@@ -367,7 +390,7 @@ class SledAnalyzerApp(QMainWindow):
 
         offset_sec = self.get_current_offset_sec()
         df_plot = self.apply_offset_to_actual(offset_sec)
-        df_target_plot = self.apply_offset_to_target(offset_sec)
+        df_target_plot = self.apply_offset_to_target()
 
         self._cleanup_axes()
 
@@ -390,22 +413,20 @@ class SledAnalyzerApp(QMainWindow):
         actual_color = '#FFD700'
         target_color = '#2a52be'
 
-        self.ax.plot(df_plot['Offset_Time'].values, df_plot['Spul'].values, color=actual_color, linewidth=2, label="SPUL")
-        max_actual_spul = df_plot['Spul'].max()
-        idx_max = df_plot['Spul'].idxmax()
-        if pd.isna(idx_max): max_actual_time_sec = 0
-        else: max_actual_time_sec = df_plot.loc[idx_max, 'Offset_Time']
+        actual_spul = self._series_data(df_plot, 'Spul')
+        self.ax.plot(actual_spul['Offset_Time'].values, actual_spul['Spul'].values, color=actual_color, linewidth=2, label="SPUL")
+        max_actual_spul, max_actual_time_sec = self._max_value_and_time(actual_spul, 'Spul')
 
-        self.ax.vlines(x=max_actual_time_sec, ymin=0, ymax=max_actual_spul, colors=actual_color, linestyles='--', linewidth=1, alpha=0.7)
+        if not pd.isna(max_actual_spul):
+            self.ax.vlines(x=max_actual_time_sec, ymin=0, ymax=max_actual_spul, colors=actual_color, linestyles='--', linewidth=1, alpha=0.7)
 
         max_target_spul = "-"
         max_target_time_ms = "-"
         if df_target_plot is not None and 'Spul' in df_target_plot.columns:
-            self.ax.plot(df_target_plot['Offset_Time'].values, df_target_plot['Spul'].values, color=target_color, linewidth=2, linestyle='-', label="Target Spul")
-            max_target_spul = df_target_plot['Spul'].max()
-            t_idx = df_target_plot['Spul'].idxmax()
-            if not pd.isna(t_idx):
-                max_target_time_sec = df_target_plot.loc[t_idx, 'Offset_Time']
+            target_spul = self._series_data(df_target_plot, 'Spul')
+            self.ax.plot(target_spul['Offset_Time'].values, target_spul['Spul'].values, color=target_color, linewidth=2, linestyle='-', label="Target Spul")
+            max_target_spul, max_target_time_sec = self._max_value_and_time(target_spul, 'Spul')
+            if not pd.isna(max_target_spul):
                 max_target_time_ms = max_target_time_sec * 1000.0
                 self.ax.vlines(x=max_target_time_sec, ymin=0, ymax=max_target_spul, colors=target_color, linestyles='--', linewidth=1, alpha=0.7)
 
@@ -420,12 +441,12 @@ class SledAnalyzerApp(QMainWindow):
             handlelength=2.0
         )
         self.ax.grid(True)
-        self.ax.set_xlim(left=0)
+        self._set_time_xlim(df_plot, df_target_plot)
         self.ax.set_ylim(bottom=0)
 
         # Tablo
         actual_val_str = f"{max_actual_spul:.1f}  $m^2/s^3$   ({max_actual_time_sec*1000.0:.1f} ms)" if not pd.isna(max_actual_spul) else "-"
-        target_val_str = f"{max_target_spul:.1f}  $m^2/s^3$   ({max_target_time_ms:.1f} ms)" if max_target_spul != "-" else "-"
+        target_val_str = f"{max_target_spul:.1f}  $m^2/s^3$   ({max_target_time_ms:.1f} ms)" if not pd.isna(max_target_spul) and max_target_spul != "-" else "-"
 
         cell_text = [
             ["SPUL", actual_val_str, ""],
@@ -443,18 +464,18 @@ class SledAnalyzerApp(QMainWindow):
 
         self.ax2 = self.ax.twinx()
 
-        l1 = self.ax.plot(df_plot['Offset_Time'].values, df_plot['Acceleration'].values, color=acc_color, linewidth=2, label="Acceleration")
-        l2 = self.ax2.plot(df_plot['Offset_Time'].values, df_plot['Velocity'].values, color=vel_color, linewidth=2, label="Velocity")
+        acc_series = self._series_data(df_plot, 'Acceleration')
+        vel_series = self._series_data(df_plot, 'Velocity')
+        l1 = self.ax.plot(acc_series['Offset_Time'].values, acc_series['Acceleration'].values, color=acc_color, linewidth=2, label="Acceleration")
+        l2 = self.ax2.plot(vel_series['Offset_Time'].values, vel_series['Velocity'].values, color=vel_color, linewidth=2, label="Velocity")
 
-        max_acc = df_plot['Acceleration'].max()
-        a_idx = df_plot['Acceleration'].idxmax()
-        max_acc_t = df_plot.loc[a_idx, 'Offset_Time'] if not pd.isna(a_idx) else 0
-        self.ax.vlines(x=max_acc_t, ymin=0, ymax=max_acc, colors=acc_color, linestyles='--', linewidth=1, alpha=0.7)
+        max_acc, max_acc_t = self._max_value_and_time(acc_series, 'Acceleration')
+        if not pd.isna(max_acc):
+            self.ax.vlines(x=max_acc_t, ymin=0, ymax=max_acc, colors=acc_color, linestyles='--', linewidth=1, alpha=0.7)
 
-        max_vel = df_plot['Velocity'].max()
-        v_idx = df_plot['Velocity'].idxmax()
-        max_vel_t = df_plot.loc[v_idx, 'Offset_Time'] if not pd.isna(v_idx) else 0
-        self.ax2.vlines(x=max_vel_t, ymin=0, ymax=max_vel, colors=vel_color, linestyles='--', linewidth=1, alpha=0.7)
+        max_vel, max_vel_t = self._max_value_and_time(vel_series, 'Velocity')
+        if not pd.isna(max_vel):
+            self.ax2.vlines(x=max_vel_t, ymin=0, ymax=max_vel, colors=vel_color, linestyles='--', linewidth=1, alpha=0.7)
 
         self.ax.set_xlabel("Time, (s)", labelpad=10)
         self.ax.set_ylabel("Acceleration, (g)")
@@ -473,11 +494,12 @@ class SledAnalyzerApp(QMainWindow):
             handlelength=2.0
         )
         self.ax.grid(True, alpha=0.5)
-        self.ax.set_xlim(left=0)
+        self._set_time_xlim(acc_series, vel_series)
+        self.ax2.set_xlim(self.ax.get_xlim())
 
         # Tablo
-        v_str = f"{max_vel:.2f} $m/s$ ({max_vel_t*1000.0:.1f} ms)"
-        a_str = f"{max_acc:.2f} g     ({max_acc_t*1000.0:.1f} ms)"
+        v_str = f"{max_vel:.2f} $m/s$ ({max_vel_t*1000.0:.1f} ms)" if not pd.isna(max_vel) else "-"
+        a_str = f"{max_acc:.2f} g     ({max_acc_t*1000.0:.1f} ms)" if not pd.isna(max_acc) else "-"
         cell_text = [
             ["Sled Velocity", v_str, ""],
             ["Sled Acceleration", a_str, ""]
@@ -492,22 +514,21 @@ class SledAnalyzerApp(QMainWindow):
         acc_color = '#1f77b4'
         target_pulse_color = '#c20078' # Magenta (Morumsı)
 
-        l1 = self.ax.plot(df_plot['Offset_Time'].values, df_plot['Acceleration'].values, color=acc_color, linewidth=2, label="Acceleration")
+        acc_series = self._series_data(df_plot, 'Acceleration')
+        l1 = self.ax.plot(acc_series['Offset_Time'].values, acc_series['Acceleration'].values, color=acc_color, linewidth=2, label="Acceleration")
 
-        max_acc = df_plot['Acceleration'].max()
-        a_idx = df_plot['Acceleration'].idxmax()
-        max_acc_t = df_plot.loc[a_idx, 'Offset_Time'] if not pd.isna(a_idx) else 0
-        self.ax.vlines(x=max_acc_t, ymin=0, ymax=max_acc, colors=acc_color, linestyles='--', linewidth=1, alpha=0.7)
+        max_acc, max_acc_t = self._max_value_and_time(acc_series, 'Acceleration')
+        if not pd.isna(max_acc):
+            self.ax.vlines(x=max_acc_t, ymin=0, ymax=max_acc, colors=acc_color, linestyles='--', linewidth=1, alpha=0.7)
 
         max_t_acc = "-"
         max_t_acc_t = "-"
         l2 = []
         if df_target_plot is not None and 'Target Acceleration' in df_target_plot.columns:
-            l2 = self.ax.plot(df_target_plot['Offset_Time'].values, df_target_plot['Target Acceleration'].values, color=target_pulse_color, linewidth=2, label="Target Pulse")
-            max_t_acc = df_target_plot['Target Acceleration'].max()
-            ta_idx = df_target_plot['Target Acceleration'].idxmax()
-            if not pd.isna(ta_idx):
-                max_t_acc_t_sec = df_target_plot.loc[ta_idx, 'Offset_Time']
+            target_acc_series = self._series_data(df_target_plot, 'Target Acceleration')
+            l2 = self.ax.plot(target_acc_series['Offset_Time'].values, target_acc_series['Target Acceleration'].values, color=target_pulse_color, linewidth=2, label="Target Pulse")
+            max_t_acc, max_t_acc_t_sec = self._max_value_and_time(target_acc_series, 'Target Acceleration')
+            if not pd.isna(max_t_acc):
                 max_t_acc_t = max_t_acc_t_sec * 1000.0
                 self.ax.vlines(x=max_t_acc_t_sec, ymin=0, ymax=max_t_acc, colors=target_pulse_color, linestyles='--', linewidth=1, alpha=0.7)
 
@@ -526,10 +547,10 @@ class SledAnalyzerApp(QMainWindow):
             handlelength=2.0
         )
         self.ax.grid(True, alpha=0.5)
-        self.ax.set_xlim(left=0)
+        self._set_time_xlim(df_plot, df_target_plot)
 
         # Tablo
-        a_str = f"{max_acc:.2f} g     ({max_acc_t*1000.0:.1f} ms)"
+        a_str = f"{max_acc:.2f} g     ({max_acc_t*1000.0:.1f} ms)" if not pd.isna(max_acc) else "-"
         t_str = f"{max_t_acc:.2f} g     ({max_t_acc_t:.1f} ms)" if max_t_acc != "-" else "-"
         cell_text = [
             ["Sled Acceleration", a_str, ""],
