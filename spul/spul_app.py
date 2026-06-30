@@ -20,8 +20,8 @@ _check_and_install_dependencies()
 import pandas as pd
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QPushButton, QLabel, QFileDialog,
-                             QMessageBox, QDoubleSpinBox, QGroupBox, QLineEdit,
+                             QHBoxLayout, QPushButton, QLabel,
+                             QMessageBox, QDoubleSpinBox, QGroupBox,
                              QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView)
 from PyQt5.QtCore import Qt
@@ -46,6 +46,7 @@ class SledAnalyzerApp(QMainWindow):
         self.resize(1280, 960)
 
         self.data_path = None
+        self.test_locations = []
         self.df_actual = None
         self.df_target = None
 
@@ -67,17 +68,22 @@ class SledAnalyzerApp(QMainWindow):
         control_group.setLayout(control_layout)
 
         # File Selection
-        self.btn_data = QPushButton("Excel Veri Dosyası Yükle")
+        self.btn_data = QPushButton("Excel Veri Dosyası Yükle / Değiştir")
         self.btn_data.clicked.connect(self.load_data_file)
         self.lbl_data = QLabel("Seçilmedi")
         self.lbl_data.setWordWrap(True)
-        control_layout.addWidget(self.btn_data)
+        control_layout.addWidget(self.btn_select_test)
         control_layout.addWidget(self.lbl_data)
 
         lbl_format = QLabel("Format: 3. satırdan itibaren A=Time(s), B=Target Acc(g), C=Target Hız(m/s), D=Actual Acc(g), E=Actual Hız(m/s)")
         lbl_format.setWordWrap(True)
         lbl_format.setStyleSheet("color: gray; font-size: 11px;")
         control_layout.addWidget(lbl_format)
+
+        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince veri otomatik olarak 3-EVA-ACC/template.xlsx dosyasından alınır.")
+        lbl_qnap.setWordWrap(True)
+        lbl_qnap.setStyleSheet("color: #555; font-size: 11px;")
+        control_layout.addWidget(lbl_qnap)
 
         control_layout.addStretch() # Push items up
 
@@ -209,16 +215,15 @@ class SledAnalyzerApp(QMainWindow):
         # --- Export Area ---
         export_layout = QHBoxLayout()
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
-        self.txt_export = QLineEdit(r"c:\Users\pc1\Desktop\adient_data\velocity_acc_target_spul")
+        self.txt_export = QLineEdit(QNAP_TEST_ROOT)
         export_layout.addWidget(self.txt_export)
 
-        self.btn_browse = QPushButton("Gözat...")
+        self.btn_browse = QPushButton("QNAP Test Seç / Gözat...")
         self.btn_browse.clicked.connect(self.browse_export_dir)
         export_layout.addWidget(self.btn_browse)
 
         self.btn_export = QPushButton("Tüm Grafikleri Kaydet (.png)")
         self.btn_export.clicked.connect(self.export_plots)
-
         export_layout.addWidget(self.btn_export)
 
         main_layout.addLayout(export_layout)
@@ -254,9 +259,77 @@ class SledAnalyzerApp(QMainWindow):
             self.spin_universal.setEnabled(True)
 
     def browse_export_dir(self):
-        directory = QFileDialog.getExistingDirectory(self, "Kayıt Klasörü Seç", self.txt_export.text())
+        tests = self.find_qnap_tests()
+        if tests:
+            labels = [test["label"] for test in tests]
+            selected, ok = QInputDialog.getItem(
+                self,
+                "QNAP Test Numarası Seç",
+                "Kaydedilecek test numarasını seçin:",
+                labels,
+                0,
+                False,
+            )
+            if ok and selected:
+                test_info = tests[labels.index(selected)]
+                self.apply_selected_test(test_info)
+            return
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Kayıt Klasörü Seç",
+            self.txt_export.text() or QNAP_TEST_ROOT,
+        )
         if directory:
             self.txt_export.setText(directory)
+
+    def find_qnap_tests(self):
+        root = QNAP_TEST_ROOT
+        if not os.path.isdir(root):
+            QMessageBox.warning(
+                self,
+                "QNAP yolu bulunamadı",
+                f"QNAP kısayolu/yolu erişilebilir değil:\n{root}\n\nElle kayıt klasörü seçebilirsiniz.",
+            )
+            return []
+
+        tests = []
+        for project_name in sorted(os.listdir(root)):
+            project_path = os.path.join(root, project_name)
+            if not os.path.isdir(project_path):
+                continue
+            for test_name in sorted(os.listdir(project_path)):
+                test_path = os.path.join(project_path, test_name)
+                if not os.path.isdir(test_path) or not test_name.startswith(TEST_FOLDER_PREFIX):
+                    continue
+                eva_acc_dir = os.path.join(test_path, REPORT_EVA_ACC_RELATIVE)
+                template_path = os.path.join(eva_acc_dir, TEMPLATE_EXCEL_NAME)
+                tests.append({
+                    "label": f"{test_name}  |  {project_name}",
+                    "test_name": test_name,
+                    "project_name": project_name,
+                    "test_path": test_path,
+                    "export_dir": eva_acc_dir,
+                    "template_path": template_path,
+                })
+        if not tests:
+            QMessageBox.warning(self, "Test bulunamadı", f"{root} altında {TEST_FOLDER_PREFIX}xxx formatında test klasörü bulunamadı.")
+        return tests
+
+    def apply_selected_test(self, test_info):
+        export_dir = test_info["export_dir"]
+        template_path = test_info["template_path"]
+        if not os.path.isdir(export_dir):
+            QMessageBox.warning(self, "Klasör bulunamadı", f"3-EVA-ACC klasörü bulunamadı:\n{export_dir}")
+            return
+        self.txt_export.setText(export_dir)
+        if os.path.isfile(template_path):
+            self.data_path = template_path
+            self.lbl_data.setText(f"{test_info['test_name']} / {TEMPLATE_EXCEL_NAME}")
+        else:
+            self.data_path = None
+            self.lbl_data.setText("template.xlsx bulunamadı")
+            QMessageBox.warning(self, "Excel bulunamadı", f"Template Excel bulunamadı:\n{template_path}")
 
     def set_local_offset(self, idx, val):
         row_offset = self.ms_to_rows(val)
@@ -291,12 +364,6 @@ class SledAnalyzerApp(QMainWindow):
         if self.df_actual is not None:
             self.draw_current_graph()
 
-    def load_data_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Excel Veri Dosyası Seç", "", "Excel Files (*.xlsx *.xls)")
-        if path:
-            self.data_path = path
-            self.lbl_data.setText(os.path.basename(path))
-
     def process_data(self, df):
         df_proc = df.copy()
 
@@ -315,8 +382,8 @@ class SledAnalyzerApp(QMainWindow):
 
     def generate_plots(self):
         if not self.data_path:
-            QMessageBox.warning(self, "Uyarı", "Lütfen tek Excel veri dosyasını yükleyin.")
-            return
+            QMessageBox.warning(self, "Uyarı", "Lütfen önce test numarasını seçin. Excel, seçilen testin 3-EVA-ACC/template.xlsx dosyasından otomatik alınır.")
+            return False
 
         try:
             # Tek Excel formatı:
@@ -335,7 +402,7 @@ class SledAnalyzerApp(QMainWindow):
 
             if self.df_actual.empty:
                 QMessageBox.warning(self, "Uyarı", "Excel dosyasında 3. satırdan itibaren okunabilir veri bulunamadı.")
-                return
+                return False
 
             # Formül gereksinimi kontrol et (Spul = V^2 / t)
             if 'Velocity' in self.df_actual.columns and 'Time' in self.df_actual.columns:
@@ -356,9 +423,11 @@ class SledAnalyzerApp(QMainWindow):
                 self.df_target['Spul'] = self.df_target['Spul_Raw']
 
             self.draw_current_graph()
+            return True
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Veri işlenirken bir hata oluştu:\n{str(e)}")
+            return False
 
     def apply_offset_to_actual(self, row_offset):
         # Actual hız/ivme verisini zaman eksenini oynatmadan satır bazlı kaydır.
@@ -664,13 +733,12 @@ class SledAnalyzerApp(QMainWindow):
         self.ax_table.text(0.833, 0.333, graph_name_text, ha='center', va='center', fontsize=10, transform=self.ax_table.transAxes)
 
     def export_plots(self):
-        save_dir = self.txt_export.text()
-        if not os.path.exists(save_dir) or not os.path.isdir(save_dir):
-            QMessageBox.warning(self, "Hata", "Geçersiz kayıt dizini.")
+        save_dir = self.export_dir
+        if not save_dir or not os.path.exists(save_dir) or not os.path.isdir(save_dir):
+            QMessageBox.warning(self, "Hata", "Lütfen önce test numarasını seçin. Kayıt konumu otomatik olarak testin 3-EVA-ACC klasörü olacaktır.")
             return
 
-        if self.df_actual is None:
-            QMessageBox.warning(self, "Hata", "İşlenecek Excel verisi yok!")
+        if self.df_actual is None and not self.generate_plots():
             return
 
         try:
@@ -689,7 +757,7 @@ class SledAnalyzerApp(QMainWindow):
             self.current_graph_idx = saved_idx
             self.update_graph_view()
 
-            QMessageBox.information(self, "Başarılı", f"Tüm 3 grafik seçilen klasöre kaydedildi:\n{names[0]}, {names[1]}, {names[2]}")
+            QMessageBox.information(self, "Başarılı", f"{self.selected_test_name} testi için tüm 3 grafik kaydedildi:\n{save_dir}\n{names[0]}, {names[1]}, {names[2]}")
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Dışa aktarma hatası:\n{str(e)}")
 
