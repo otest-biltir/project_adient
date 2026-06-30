@@ -3,7 +3,7 @@ import os
 import subprocess
 
 def _check_and_install_dependencies():
-    required_packages = ['pandas', 'numpy', 'PyQt5', 'matplotlib', 'docxtpl', 'openpyxl', 'xlrd']
+    required_packages = ['pandas', 'numpy', 'PyQt5', 'matplotlib', 'openpyxl', 'xlrd']
     for pkg in required_packages:
         try:
             __import__(pkg)
@@ -19,11 +19,11 @@ _check_and_install_dependencies()
 
 import pandas as pd
 import numpy as np
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QFileDialog, 
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QFileDialog,
                              QMessageBox, QDoubleSpinBox, QGroupBox, QLineEdit,
-                             QCheckBox, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-                             QDialog, QFormLayout, QDialogButtonBox)
+                             QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
+                             QAbstractItemView)
 from PyQt5.QtCore import Qt
 
 import matplotlib
@@ -31,15 +31,6 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from docxtpl import DocxTemplate, InlineImage
-from docx.shared import Mm
-import shared.global_data as global_data
-from PyQt5.QtCore import Qt
-
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
 class SledAnalyzerApp(QMainWindow):
     def __init__(self, main_window=None):
@@ -221,12 +212,7 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_export = QPushButton("Tüm Grafikleri Kaydet (.png)")
         self.btn_export.clicked.connect(self.export_plots)
 
-        self.btn_report = QPushButton("Rapor Oluştur (Word)")
-        self.btn_report.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
-        self.btn_report.clicked.connect(self.generate_word_report)
-        
         export_layout.addWidget(self.btn_export)
-        export_layout.addWidget(self.btn_report)
         
         main_layout.addLayout(export_layout)
         
@@ -604,79 +590,6 @@ class SledAnalyzerApp(QMainWindow):
             QMessageBox.information(self, "Başarılı", f"Tüm 3 grafik seçilen klasöre kaydedildi:\n{names[0]}, {names[1]}, {names[2]}")
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Dışa aktarma hatası:\n{str(e)}")
-
-    def generate_word_report(self):
-        save_dir = self.txt_export.text()
-        if not os.path.exists(save_dir) or not os.path.isdir(save_dir):
-            QMessageBox.warning(self, "Hata", "Geçersiz dizin.")
-            return
-            
-        if self.df_actual is None:
-            QMessageBox.warning(self, "Hata", "İşlenecek Actual Data yok!")
-            return
-
-        template_path = os.path.join(save_dir, "Template.docx")
-        if not os.path.exists(template_path):
-            QMessageBox.warning(self, "Hata", f"Template.docx dosyası bulunamadı, aynı dizinde olmalı:\n{template_path}")
-            return
-            
-        test_no_input = global_data.config.get("TEST_NO", "Belirtilmedi")
-        
-        # Sonek çıkart (Örneğin 2026/096 -> 096)
-        suffix = test_no_input.split('/')[-1] if '/' in test_no_input else test_no_input
-        out_filename = f"graphs_{suffix}.docx"
-        
-        try:
-            import tempfile
-            temp_dir = tempfile.mkdtemp()
-            
-            saved_idx = self.current_graph_idx
-            paths = {}
-            labels = ["Spul", "Acc_vs_Vel", "Acc_vs_Targetacc"]
-            
-            # 3 Grafiği temp olarak çizdirip hafızaya alalım
-            for i in range(3):
-                self.current_graph_idx = i
-                self.draw_current_graph()
-                path = os.path.join(temp_dir, f"{labels[i]}.png")
-                self.figure.savefig(path, dpi=300, bbox_inches='tight')
-                paths[labels[i]] = path
-                
-            self.current_graph_idx = saved_idx
-            self.update_graph_view()
-            
-            # Render the DocxTemplate using jinja2 syntaxes
-            doc = DocxTemplate(template_path)
-            
-            context = {
-                "TEST_NO": global_data.config.get("TEST_NO", ""),
-                "TEST_DATE": global_data.config.get("TEST_DATE", ""),
-                "PROJECT": global_data.config.get("PROJECT", ""),
-                "SPUL": InlineImage(doc, paths["Spul"], width=Mm(160)),
-                "ACC_VEL": InlineImage(doc, paths["Acc_vs_Vel"], width=Mm(160)),
-                "ACC_TARGET": InlineImage(doc, paths["Acc_vs_Targetacc"], width=Mm(160))
-            }
-            
-            doc.render(context)
-            
-            # Change out_path to point to tempfiles directory
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            tempfiles_dir = os.path.join(root_dir, "tempfiles")
-            if not os.path.exists(tempfiles_dir):
-                os.makedirs(tempfiles_dir)
-                
-            final_out_path = os.path.join(tempfiles_dir, out_filename)
-            doc.save(final_out_path)
-            
-            QMessageBox.information(self, "Başarılı", f"Word Raporu başarıyla oluşturuldu!\n\nDosya Yolu: {final_out_path}")
-            
-            # Kapat ve ana uygulamaya dön
-            if self.main_window:
-                self.close()
-                self.main_window.show()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Rapor oluşturulurken hata oluştu:\n{str(e)}")
 
 if __name__ == "__main__":
     app = QApplication(sys.callbacks) if hasattr(sys, 'callbacks') else QApplication(sys.argv)
