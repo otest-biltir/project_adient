@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QFileDialog,
                              QMessageBox, QDoubleSpinBox, QGroupBox, QLineEdit,
                              QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QAbstractItemView)
+                             QAbstractItemView, QInputDialog)
 from PyQt5.QtCore import Qt
 
 import matplotlib
@@ -36,6 +36,11 @@ MAX_GRAPH_TIME_SEC = 0.15
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
+QNAP_TEST_ROOT = r"O:\1_BILTIR_TEST_DOSYALARI\2026\02 - DINIZ-ADIENT"
+REPORT_EVA_ACC_RELATIVE = os.path.join("REPORT FILES", "3-EVA-ACC")
+TEMPLATE_EXCEL_NAME = "template.xlsx"
+TEST_FOLDER_PREFIX = "26-"
+ZERO_TRIM_TOLERANCE = 1e-6
 
 
 class SledAnalyzerApp(QMainWindow):
@@ -46,6 +51,7 @@ class SledAnalyzerApp(QMainWindow):
         self.resize(1100, 900)
 
         self.data_path = None
+        self.test_locations = []
         self.df_actual = None
         self.df_target = None
 
@@ -67,7 +73,7 @@ class SledAnalyzerApp(QMainWindow):
         control_group.setLayout(control_layout)
 
         # File Selection
-        self.btn_data = QPushButton("Excel Veri Dosyası Yükle")
+        self.btn_data = QPushButton("Excel Veri Dosyası Yükle / Değiştir")
         self.btn_data.clicked.connect(self.load_data_file)
         self.lbl_data = QLabel("Seçilmedi")
         self.lbl_data.setWordWrap(True)
@@ -78,6 +84,11 @@ class SledAnalyzerApp(QMainWindow):
         lbl_format.setWordWrap(True)
         lbl_format.setStyleSheet("color: gray; font-size: 11px;")
         control_layout.addWidget(lbl_format)
+
+        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince veri otomatik olarak 3-EVA-ACC/template.xlsx dosyasından alınır.")
+        lbl_qnap.setWordWrap(True)
+        lbl_qnap.setStyleSheet("color: #555; font-size: 11px;")
+        control_layout.addWidget(lbl_qnap)
 
         control_layout.addStretch() # Push items up
 
@@ -209,10 +220,10 @@ class SledAnalyzerApp(QMainWindow):
         # --- Export Area ---
         export_layout = QHBoxLayout()
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
-        self.txt_export = QLineEdit(r"c:\Users\pc1\Desktop\adient_data\velocity_acc_target_spul")
+        self.txt_export = QLineEdit(QNAP_TEST_ROOT)
         export_layout.addWidget(self.txt_export)
 
-        self.btn_browse = QPushButton("Gözat...")
+        self.btn_browse = QPushButton("QNAP Test Seç / Gözat...")
         self.btn_browse.clicked.connect(self.browse_export_dir)
         export_layout.addWidget(self.btn_browse)
 
@@ -254,9 +265,77 @@ class SledAnalyzerApp(QMainWindow):
             self.spin_universal.setEnabled(True)
 
     def browse_export_dir(self):
-        directory = QFileDialog.getExistingDirectory(self, "Kayıt Klasörü Seç", self.txt_export.text())
+        tests = self.find_qnap_tests()
+        if tests:
+            labels = [test["label"] for test in tests]
+            selected, ok = QInputDialog.getItem(
+                self,
+                "QNAP Test Numarası Seç",
+                "Kaydedilecek test numarasını seçin:",
+                labels,
+                0,
+                False,
+            )
+            if ok and selected:
+                test_info = tests[labels.index(selected)]
+                self.apply_selected_test(test_info)
+            return
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Kayıt Klasörü Seç",
+            self.txt_export.text() or QNAP_TEST_ROOT,
+        )
         if directory:
             self.txt_export.setText(directory)
+
+    def find_qnap_tests(self):
+        root = QNAP_TEST_ROOT
+        if not os.path.isdir(root):
+            QMessageBox.warning(
+                self,
+                "QNAP yolu bulunamadı",
+                f"QNAP kısayolu/yolu erişilebilir değil:\n{root}\n\nElle kayıt klasörü seçebilirsiniz.",
+            )
+            return []
+
+        tests = []
+        for project_name in sorted(os.listdir(root)):
+            project_path = os.path.join(root, project_name)
+            if not os.path.isdir(project_path):
+                continue
+            for test_name in sorted(os.listdir(project_path)):
+                test_path = os.path.join(project_path, test_name)
+                if not os.path.isdir(test_path) or not test_name.startswith(TEST_FOLDER_PREFIX):
+                    continue
+                eva_acc_dir = os.path.join(test_path, REPORT_EVA_ACC_RELATIVE)
+                template_path = os.path.join(eva_acc_dir, TEMPLATE_EXCEL_NAME)
+                tests.append({
+                    "label": f"{test_name}  |  {project_name}",
+                    "test_name": test_name,
+                    "project_name": project_name,
+                    "test_path": test_path,
+                    "export_dir": eva_acc_dir,
+                    "template_path": template_path,
+                })
+        if not tests:
+            QMessageBox.warning(self, "Test bulunamadı", f"{root} altında {TEST_FOLDER_PREFIX}xxx formatında test klasörü bulunamadı.")
+        return tests
+
+    def apply_selected_test(self, test_info):
+        export_dir = test_info["export_dir"]
+        template_path = test_info["template_path"]
+        if not os.path.isdir(export_dir):
+            QMessageBox.warning(self, "Klasör bulunamadı", f"3-EVA-ACC klasörü bulunamadı:\n{export_dir}")
+            return
+        self.txt_export.setText(export_dir)
+        if os.path.isfile(template_path):
+            self.data_path = template_path
+            self.lbl_data.setText(f"{test_info['test_name']} / {TEMPLATE_EXCEL_NAME}")
+        else:
+            self.data_path = None
+            self.lbl_data.setText("template.xlsx bulunamadı")
+            QMessageBox.warning(self, "Excel bulunamadı", f"Template Excel bulunamadı:\n{template_path}")
 
     def set_local_offset(self, idx, val):
         row_offset = self.ms_to_rows(val)
@@ -395,7 +474,7 @@ class SledAnalyzerApp(QMainWindow):
         return series
 
     def _trim_trailing_zeros(self, series, value_col):
-        non_zero = series[value_col].abs() > 1e-9
+        non_zero = series[value_col].abs() > ZERO_TRIM_TOLERANCE
         if non_zero.any():
             return series.loc[:non_zero[non_zero].index[-1]]
         return series
