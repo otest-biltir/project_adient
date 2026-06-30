@@ -29,12 +29,13 @@ Program çalışırken Python'ın ihtiyaç duyduğu kütüphaneler:
 - **⬅** ve **➡** tuşlarıyla 3 grafik arasında geçiş yapabilirsiniz: `Spul`, `Acceleration vs Velocity`, `Actual vs Target Acceleration`.
 
 ### 3- Offset (Kayıklık) Ayarları
-- Sağ üstteki **Actual Satır Offset Ayarları** tablosunda actual hız/ivme verisini satır bazlı yukarı/aşağı kaydırabilirsiniz.
-- Her 1 satır, Excel verisindeki **0.0004 saniye** örnek aralığına karşılık gelir; uygulama seçilen satır offsetinin ms karşılığını tabloda gösterir.
-- Pozitif satır offseti actual veriyi aşağı, negatif satır offseti yukarı kaydırır.
+- Sağ üstteki **Actual Offset Ayarları** tablosunda actual hız/ivme offsetini **ms** cinsinden girebilirsiniz.
+- Hassasiyet **0.4 ms**'dir; bu değer Excel verisindeki **0.0004 saniye** örnek aralığına, yani 1 satıra karşılık gelir.
+- Uygulama girilen ms değerinin kaç satıra denk geldiğini tabloda gösterir.
+- Pozitif offset actual grafiği 0'a yaklaştıracak yönde uygular; 14 ms offset 35 satırdır.
 - Target veri offsetten etkilenmez; orijinal zaman ekseninde sabit kalır.
-- **Evrensel Offset** alanı actual grafiklere aynı satır offsetini uygular.
-- **14 ms Sabit Offset** seçeneği actual grafikleri **35 satır** kaydırır.
+- **Evrensel Offset** alanı actual grafiklere aynı ms offsetini uygular.
+- **14 ms Sabit Offset** seçeneği actual grafikleri **35 satır** karşılığı kadar 0’a yaklaştırır.
 - Grafiklerin zaman ekseni en fazla **0.15 saniye** gösterir; bir seri daha erken biterse çizgi orada kesilir ve eksik bölüm 0 olarak tamamlanmaz.
 
 ### 4- PNG Resim Çıktısı Alma

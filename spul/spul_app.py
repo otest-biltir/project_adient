@@ -21,8 +21,8 @@ import pandas as pd
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QFileDialog,
-                             QMessageBox, QGroupBox, QLineEdit,
-                             QCheckBox, QSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
+                             QMessageBox, QDoubleSpinBox, QGroupBox, QLineEdit,
+                             QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView)
 from PyQt5.QtCore import Qt
 
@@ -34,7 +34,8 @@ from matplotlib.figure import Figure
 
 MAX_GRAPH_TIME_SEC = 0.15
 DATA_INTERVAL_SEC = 0.0004
-ROWS_FOR_14MS = round(0.014 / DATA_INTERVAL_SEC)
+MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
+ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
 
 
 class SledAnalyzerApp(QMainWindow):
@@ -89,13 +90,13 @@ class SledAnalyzerApp(QMainWindow):
         top_layout.addWidget(control_group, stretch=1)
 
         # --- Offset Table Panel (Right) ---
-        offset_group = QGroupBox("Actual Satır Offset Ayarları")
+        offset_group = QGroupBox("Actual Offset Ayarları")
         offset_layout = QVBoxLayout()
         offset_group.setLayout(offset_layout)
 
         self.table_offset = QTableWidget()
         self.table_offset.setColumnCount(3)
-        self.table_offset.setHorizontalHeaderLabels(["Değişken / Grafik", "Satır Offset", "Süre Karşılığı"])
+        self.table_offset.setHorizontalHeaderLabels(["Değişken / Grafik", "Offset (ms)", "Satır Karşılığı"])
         self.table_offset.setRowCount(3)
         self.table_offset.verticalHeader().setVisible(False)
         self.table_offset.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -122,12 +123,13 @@ class SledAnalyzerApp(QMainWindow):
             item_var.setFlags(item_var.flags() ^ Qt.ItemIsEditable)
             self.table_offset.setItem(i, 0, item_var)
 
-            # Column 1: Row offset (one step = one data row = 0.0004 s)
-            spin = QSpinBox()
-            spin.setRange(-10000, 10000)
-            spin.setValue(0)
-            spin.setSingleStep(1)
-            spin.setSuffix(" satır")
+            # Column 1: Offset in ms. One UI step = one data row = 0.4 ms.
+            spin = QDoubleSpinBox()
+            spin.setRange(-4000.0, 4000.0)
+            spin.setValue(0.0)
+            spin.setSingleStep(MS_PER_ROW)
+            spin.setDecimals(1)
+            spin.setSuffix(" ms")
             spin.setStyleSheet("border: none; background: transparent;")
             spin.valueChanged.connect(lambda val, idx=i: self.set_local_offset(idx, val))
             self.table_offset.setCellWidget(i, 1, spin)
@@ -144,12 +146,13 @@ class SledAnalyzerApp(QMainWindow):
 
         # Universal Offset input at bottom of table
         univ_layout = QHBoxLayout()
-        univ_layout.addWidget(QLabel("Tüm actual grafiklere aynı satır offsetini uygula:"))
-        self.spin_universal = QSpinBox()
-        self.spin_universal.setRange(-10000, 10000)
-        self.spin_universal.setValue(0)
-        self.spin_universal.setSingleStep(1)
-        self.spin_universal.setSuffix(" satır")
+        univ_layout.addWidget(QLabel("Tüm actual grafiklere aynı offseti uygula:"))
+        self.spin_universal = QDoubleSpinBox()
+        self.spin_universal.setRange(-4000.0, 4000.0)
+        self.spin_universal.setValue(0.0)
+        self.spin_universal.setSingleStep(MS_PER_ROW)
+        self.spin_universal.setDecimals(1)
+        self.spin_universal.setSuffix(" ms")
         self.spin_universal.valueChanged.connect(self.apply_universal_offset)
         univ_layout.addWidget(self.spin_universal)
 
@@ -227,16 +230,22 @@ class SledAnalyzerApp(QMainWindow):
         main_layout.addWidget(lbl_author)
 
     def apply_universal_offset(self, val):
+        row_offset = self.ms_to_rows(val)
+        normalized_ms = row_offset * MS_PER_ROW
+        if abs(normalized_ms - val) > 1e-9:
+            blocked = self.spin_universal.blockSignals(True)
+            self.spin_universal.setValue(normalized_ms)
+            self.spin_universal.blockSignals(blocked)
         for spin in self.spin_offsets:
-            spin.setValue(val)
+            spin.setValue(normalized_ms)
 
     def apply_14ms_offset(self, state):
         if state == Qt.Checked:
             # 14 ms, 0.0004 s örnek aralığında 35 satıra karşılık gelir.
             for spin in self.spin_offsets:
-                spin.setValue(ROWS_FOR_14MS)
+                spin.setValue(14.0)
                 spin.setEnabled(False)
-            self.spin_universal.setValue(ROWS_FOR_14MS)
+            self.spin_universal.setValue(14.0)
             self.spin_universal.setEnabled(False)
         else:
             # Re-enable manual edit
@@ -250,16 +259,24 @@ class SledAnalyzerApp(QMainWindow):
             self.txt_export.setText(directory)
 
     def set_local_offset(self, idx, val):
-        row_offset = int(val)
+        row_offset = self.ms_to_rows(val)
         self.local_offsets[idx] = row_offset
+        normalized_ms = row_offset * MS_PER_ROW
+        if abs(normalized_ms - val) > 1e-9:
+            spin = self.spin_offsets[idx]
+            blocked = spin.blockSignals(True)
+            spin.setValue(normalized_ms)
+            spin.blockSignals(blocked)
         if idx < len(self.offset_duration_items):
             self.offset_duration_items[idx].setText(self.format_offset_duration(row_offset))
         if self.current_graph_idx == idx and self.df_actual is not None:
             self.draw_current_graph()
 
+    def ms_to_rows(self, offset_ms):
+        return int(round(offset_ms / MS_PER_ROW))
+
     def format_offset_duration(self, row_offset):
-        offset_ms = row_offset * DATA_INTERVAL_SEC * 1000.0
-        return f"{offset_ms:.1f} ms ({row_offset} satır × 0.0004 s)"
+        return f"{row_offset} satır × {MS_PER_ROW:.1f} ms"
 
     def prev_graph(self):
         self.current_graph_idx = (self.current_graph_idx - 1) % len(self.graphs)
@@ -345,12 +362,13 @@ class SledAnalyzerApp(QMainWindow):
 
     def apply_offset_to_actual(self, row_offset):
         # Actual hız/ivme verisini zaman eksenini oynatmadan satır bazlı kaydır.
-        # Pozitif değer veriyi aşağı kaydırır; negatif değer yukarı kaydırır.
+        # Pozitif offset grafiği 0'a yaklaştırır; bu yüzden değerler yukarı kaydırılır.
         df_plot = self.df_actual.copy()
         df_plot['Offset_Time'] = df_plot['Time']
+        value_shift = -row_offset
         for col in ['Velocity', 'Acceleration']:
             if col in df_plot.columns:
-                df_plot[col] = df_plot[col].shift(row_offset)
+                df_plot[col] = df_plot[col].shift(value_shift)
         if 'Velocity' in df_plot.columns:
             valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
             df_plot['Spul'] = np.nan
@@ -369,9 +387,18 @@ class SledAnalyzerApp(QMainWindow):
             df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Target Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
         return df_plot[(df_plot['Offset_Time'] >= 0) & (df_plot['Offset_Time'] <= MAX_GRAPH_TIME_SEC)]
 
-    def _series_data(self, df, value_col):
+    def _series_data(self, df, value_col, trim_trailing_zeros=False):
         series = df[['Offset_Time', value_col]].dropna()
-        return series[series['Offset_Time'] <= MAX_GRAPH_TIME_SEC]
+        series = series[series['Offset_Time'] <= MAX_GRAPH_TIME_SEC]
+        if trim_trailing_zeros:
+            series = self._trim_trailing_zeros(series, value_col)
+        return series
+
+    def _trim_trailing_zeros(self, series, value_col):
+        non_zero = series[value_col].abs() > 1e-9
+        if non_zero.any():
+            return series.loc[:non_zero[non_zero].index[-1]]
+        return series
 
     def _set_time_xlim(self, *dfs):
         max_times = []
@@ -427,7 +454,7 @@ class SledAnalyzerApp(QMainWindow):
         actual_color = '#FFD700'
         target_color = '#2a52be'
 
-        actual_spul = self._series_data(df_plot, 'Spul')
+        actual_spul = self._series_data(df_plot, 'Spul', trim_trailing_zeros=True)
         self.ax.plot(actual_spul['Offset_Time'].values, actual_spul['Spul'].values, color=actual_color, linewidth=2, label="SPUL")
         max_actual_spul, max_actual_time_sec = self._max_value_and_time(actual_spul, 'Spul')
 
@@ -437,7 +464,7 @@ class SledAnalyzerApp(QMainWindow):
         max_target_spul = "-"
         max_target_time_ms = "-"
         if df_target_plot is not None and 'Spul' in df_target_plot.columns:
-            target_spul = self._series_data(df_target_plot, 'Spul')
+            target_spul = self._series_data(df_target_plot, 'Spul', trim_trailing_zeros=True)
             self.ax.plot(target_spul['Offset_Time'].values, target_spul['Spul'].values, color=target_color, linewidth=2, linestyle='-', label="Target Spul")
             max_target_spul, max_target_time_sec = self._max_value_and_time(target_spul, 'Spul')
             if not pd.isna(max_target_spul):
