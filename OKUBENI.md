@@ -14,9 +14,15 @@ Program çalışırken Python'ın ihtiyaç duyduğu kütüphaneler:
 
 ## Nasıl Kullanılır? (Adım Adım Kılavuz)
 
-### 1- Verilerin Yüklenmesi (Sol Üst Köşe)
-- **Actual Data Yükle:** Sisteminize dışarıdan aldığınız gerçekleşen test verisini uygulamaya tanıtın. Excel dosyasında `Time`, `Velocity` ve `Acceleration` verilerinin bulunması gerekir.
-- **Target Data Yükle:** Eğer varsa, hedeflenen çarpışma verilerini bu butonla uygulamaya tanıtın. İçerisinde `Target Velocity` ve `Target Acceleration` gibi değerler bulunmalıdır. Girilmesi zorunlu değildir.
+### 1- Tek Excel Dosyasının Yüklenmesi (Sol Üst Köşe)
+- **Excel Veri Dosyası Yükle:** Target ve actual verileri aynı Excel dosyasından okunur. Ayrı ayrı Actual/Target dosyası seçilmez.
+- Uygulama ilk 2 satırı atlar ve 3. satırdan itibaren A:E sütunlarını veri olarak okur.
+- Beklenen sütun sırası:
+  - **A:** Time (`s`)
+  - **B:** Target Acceleration (`g`)
+  - **C:** Target hız (`m/s`)
+  - **D:** Actual Acceleration (`g`)
+  - **E:** Actual hız (`m/s`)
 
 ### 2- Grafikleri Görme
 - Veriyi seçtikten sonra **"Oluştur / Güncelle"** butonuna basın. Uygulama verileri işler ve grafikleri ana ekranda çizer.
