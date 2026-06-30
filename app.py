@@ -45,19 +45,34 @@ def _configure_qt_environment():
         # Linux/macOS üzerinde yanlış "windows" platformu atanmışsa temizle.
         os.environ.pop("QT_QPA_PLATFORM", None)
 
-    # PyQt5 plugin dizinini açıkça tanımlamak, bozuk/eksik PATH durumlarında yardımcı olur.
-    pyqt_root = Path(sys.executable).resolve().parent
+    # PyQt5 platform plugin dizinini gerçek paket konumundan bul.
+    # Windows'ta PyQt5 kullanıcı dizinine kurulmuş olabilir; bu durumda sys.executable
+    # altındaki site-packages varsayımı qwindows.dll yolunu bulamaz.
+    import PyQt5
+
+    pyqt_package_dir = Path(PyQt5.__file__).resolve().parent
+    executable_dir = Path(sys.executable).resolve().parent
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
     candidates = [
-        pyqt_root / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",  # Windows venv
-        pyqt_root / "lib" / "python3.12" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
-        pyqt_root / "lib" / "python3.11" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
-        pyqt_root / "lib" / "python3.10" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
+        pyqt_package_dir / "Qt5" / "plugins" / "platforms",
+        pyqt_package_dir / "Qt" / "plugins" / "platforms",
+        pyqt_package_dir / "plugins" / "platforms",
+        executable_dir / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
+        executable_dir / "lib" / version / "site-packages" / "PyQt5" / "Qt5" / "plugins" / "platforms",
     ]
-    if not os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH"):
-        for platform_dir in candidates:
-            if platform_dir.exists():
-                os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_dir)
-                break
+
+    for platform_dir in candidates:
+        if platform_dir.exists():
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_dir)
+            plugin_root = platform_dir.parent
+            existing_plugin_path = os.environ.get("QT_PLUGIN_PATH", "")
+            if str(plugin_root) not in existing_plugin_path.split(os.pathsep):
+                os.environ["QT_PLUGIN_PATH"] = (
+                    str(plugin_root)
+                    if not existing_plugin_path
+                    else str(plugin_root) + os.pathsep + existing_plugin_path
+                )
+            break
 
 
 _configure_qt_environment()
