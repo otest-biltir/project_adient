@@ -72,8 +72,12 @@ class SledAnalyzerApp(QMainWindow):
         control_layout = QVBoxLayout()
         control_group.setLayout(control_layout)
 
-        # File Selection
-        self.btn_data = QPushButton("Excel Veri Dosyası Yükle / Değiştir")
+        # File/Test Selection
+        self.btn_select_test = QPushButton("QNAP / Test Klasörü Seç (template.xlsx otomatik)")
+        self.btn_select_test.clicked.connect(self.browse_export_dir)
+        control_layout.addWidget(self.btn_select_test)
+
+        self.btn_data = QPushButton("Excel Dosyasını Elle Yükle / Değiştir")
         self.btn_data.clicked.connect(self.load_data_file)
         self.lbl_data = QLabel("Seçilmedi")
         self.lbl_data.setWordWrap(True)
@@ -346,7 +350,37 @@ class SledAnalyzerApp(QMainWindow):
             self.txt_export.text() or QNAP_TEST_ROOT,
         )
         if directory:
-            self.txt_export.setText(directory)
+            self.apply_selected_directory(directory)
+
+    def _resolve_template_from_directory(self, directory):
+        candidates = []
+        base_name = os.path.basename(os.path.normpath(directory)).lower()
+        if base_name == REPORT_EVA_ACC_RELATIVE.lower():
+            candidates.append(os.path.join(directory, TEMPLATE_EXCEL_NAME))
+        candidates.append(os.path.join(directory, REPORT_EVA_ACC_RELATIVE, TEMPLATE_EXCEL_NAME))
+        candidates.append(os.path.join(directory, TEMPLATE_EXCEL_NAME))
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return os.path.dirname(candidate), candidate
+        # Hiçbiri yoksa test klasörü seçildi varsayımıyla 3-EVA-ACC altına kurmayı teklif et.
+        if base_name == REPORT_EVA_ACC_RELATIVE.lower():
+            template_path = os.path.join(directory, TEMPLATE_EXCEL_NAME)
+        else:
+            template_path = os.path.join(directory, REPORT_EVA_ACC_RELATIVE, TEMPLATE_EXCEL_NAME)
+        return os.path.dirname(template_path), template_path
+
+    def apply_selected_directory(self, directory):
+        export_dir, template_path = self._resolve_template_from_directory(directory)
+        if not os.path.isdir(export_dir):
+            os.makedirs(export_dir, exist_ok=True)
+        self.txt_export.setText(export_dir)
+        if not os.path.isfile(template_path):
+            self.data_path = None
+            self.lbl_data.setText("template.xlsx bulunamadı")
+            if not self._offer_install_template(template_path):
+                return
+        self.data_path = template_path
+        self.lbl_data.setText(template_path)
 
     def find_qnap_tests(self):
         root = QNAP_TEST_ROOT
@@ -777,7 +811,7 @@ class SledAnalyzerApp(QMainWindow):
 
         # Tablo
         a_str = f"{max_acc:.2f} g     ({max_acc_t*1000.0:.1f} ms)" if not pd.isna(max_acc) else "-"
-        t_str = f"{max_t_acc:.2f} g     ({max_t_acc_t:.1f} ms)" if max_t_acc != "-" else "-"
+        t_str = f"{max_t_acc:.2f} g     ({max_t_acc_t:.1f} ms)" if max_t_acc != "-" and not pd.isna(max_t_acc) else "-"
         cell_text = [
             ["Sled Acceleration", a_str, ""],
             ["Target Acceleration", t_str, ""]
