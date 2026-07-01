@@ -36,7 +36,7 @@ MAX_GRAPH_TIME_SEC = 0.15
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
-QNAP_TEST_ROOT = r"Q:\\"
+QNAP_TEST_ROOT = "Q:\\"
 TEST_FOLDER_PREFIX = "T"
 REPORT_EVA_ACC_RELATIVE = os.path.join("3-EVA-ACC")
 TEMPLATE_EXCEL_NAME = "template.xlsx"
@@ -48,7 +48,7 @@ class SledAnalyzerApp(QMainWindow):
         super().__init__()
         self.main_window = main_window
         self.setWindowTitle("Sled Test Analyzer (Multi-Graph)")
-        self.resize(1280, 960)
+        self.resize(1500, 1050)
 
         self.data_path = None
         self.test_locations = []
@@ -551,13 +551,11 @@ class SledAnalyzerApp(QMainWindow):
         if series.empty or series[value_col].dropna().empty:
             return np.nan, 0
         idx = series[value_col].idxmax()
-        peak_time = series.loc[idx, 'Offset_Time']
-        if not pd.isna(peak_time):
-            # Excel floating point noise and row-based offsets can show the peak one
-            # sample (0.4 ms) off when formatted. Snap reported peak time to the
-            # known acquisition interval so manual row calculations match the UI.
-            peak_time = round(float(peak_time) / DATA_INTERVAL_SEC) * DATA_INTERVAL_SEC
-        return series.loc[idx, value_col], peak_time
+        # Zamanı sonradan yuvarlamıyoruz/snap etmiyoruz; SPUL pik zamanındaki
+        # 0.4 ms kaymayı asıl düzelten yer, Spul_Raw serisinin actual verilerle
+        # aynı satır offset'iyle kaydırılmasıdır. Böylece tabloda görülen zaman
+        # grafikteki gerçek pik noktasının zamanıdır.
+        return series.loc[idx, value_col], series.loc[idx, 'Offset_Time']
 
 
     def _style_axes(self, ax, *, zero_line=True):
