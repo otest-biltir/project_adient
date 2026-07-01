@@ -539,14 +539,18 @@ class SledAnalyzerApp(QMainWindow):
         df_plot = self.df_actual.copy()
         df_plot['Offset_Time'] = df_plot['Time']
         value_shift = -row_offset
-        # Velocity/Acceleration ile birlikte Spul'u da satır bazlı kaydırıyoruz.
-        # Spul'u kaydırılmış velocity + kaydırılmamış time ile tekrar hesaplamak,
-        # pik zamanını bir örnekleme adımı (0.4 ms) kaydırabiliyordu.
-        for col in ['Velocity', 'Acceleration', 'Spul', 'Spul_Raw']:
+        # Offset actual ölçümlerine uygulanır: velocity/acceleration satır bazlı kayar.
+        # SPUL bağımsız kaydırılan bir seri değildir; formülü v^2 / t olduğu için
+        # offsetlenmiş Velocity ile mevcut zaman ekseni üzerinden yeniden hesaplanır.
+        for col in ['Velocity', 'Acceleration']:
             if col in df_plot.columns:
                 df_plot[col] = df_plot[col].shift(value_shift)
-        if 'Spul_Raw' in df_plot.columns:
-            df_plot['Spul'] = df_plot['Spul_Raw']
+        if 'Velocity' in df_plot.columns:
+            valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
+            df_plot['Spul'] = np.nan
+            df_plot.loc[valid_time, 'Spul'] = (
+                df_plot.loc[valid_time, 'Velocity'] ** 2
+            ) / df_plot.loc[valid_time, 'Offset_Time']
         return df_plot[(df_plot['Offset_Time'] >= 0) & (df_plot['Offset_Time'] <= MAX_GRAPH_TIME_SEC)]
 
     def apply_offset_to_target(self):
@@ -589,10 +593,7 @@ class SledAnalyzerApp(QMainWindow):
         if series.empty or series[value_col].dropna().empty:
             return np.nan, 0
         idx = series[value_col].idxmax()
-        # Zamanı sonradan yuvarlamıyoruz/snap etmiyoruz; SPUL pik zamanındaki
-        # 0.4 ms kaymayı asıl düzelten yer, Spul_Raw serisinin actual verilerle
-        # aynı satır offset'iyle kaydırılmasıdır. Böylece tabloda görülen zaman
-        # grafikteki gerçek pik noktasının zamanıdır.
+        # Tabloda görülen zaman grafikteki gerçek pik noktasının zamanıdır.
         return series.loc[idx, value_col], series.loc[idx, 'Offset_Time']
 
 
