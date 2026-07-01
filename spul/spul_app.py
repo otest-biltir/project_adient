@@ -290,13 +290,14 @@ class SledAnalyzerApp(QMainWindow):
         QMessageBox.information(
             self,
             "template.xlsx formatı",
-            "template.xlsx dosyası seçilen testin 3-EVA-ACC klasöründe bulunmalıdır.\n\n"
-            "Uygulama ilk 2 satırı başlık/not olarak atlar ve 3. satırdan itibaren şu sütunları okur:\n"
+            "template.xlsx dosyası seçilen testin REPORT FILES/3-EVA-ACC klasöründe bulunmalıdır.\n\n"
+            "Excel'de ilk 2 satırı başlık/not için bırakın; actual ve target verilerini 3. satırdan itibaren aynı dosyaya yükleyin:\n"
             "A: Time (s)\n"
             "B: Target Acceleration (g)\n"
             "C: Target Velocity / Hız (m/s)\n"
             "D: Actual Acceleration (g)\n"
             "E: Actual Velocity / Hız (m/s)\n\n"
+            "Target sütunlarına hedef pulse/hız verisini, Actual sütunlarına testten ölçülen ivme/hız verisini yapıştırın.\n\n"
             f"Kurulan/istenen konum:\n{path}",
         )
 
@@ -305,7 +306,7 @@ class SledAnalyzerApp(QMainWindow):
             self,
             "template.xlsx bulunamadı",
             f"Bu test klasöründe template.xlsx yok:\n{template_path}\n\n"
-            "Buraya boş template.xlsx kurulsun mu?",
+            "Buraya otomatik boş template.xlsx kurulsun mu?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -755,7 +756,9 @@ class SledAnalyzerApp(QMainWindow):
         self._set_y_limits_with_zero(self.ax, (acc_series, 'Acceleration'), min_span=1.0)
         self._set_y_limits_with_zero(self.ax2, (vel_series, 'Velocity'), min_span=0.2)
         self._style_axes(self.ax)
-        self._style_axes(self.ax2)
+        # İkiz y ekseninde ikinci bir kalın 0 çizgisi çizme; acceleration eksenindeki
+        # tek siyah 0 çizgisi grafikte referans olarak yeterli ve çift çizgi görüntüsünü engeller.
+        self._style_axes(self.ax2, zero_line=False)
         self._draw_peak_line(self.ax, max_acc_t, max_acc, acc_color)
         self._draw_peak_line(self.ax2, max_vel_t, max_vel, vel_color)
 
