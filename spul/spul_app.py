@@ -36,9 +36,10 @@ MAX_GRAPH_TIME_SEC = 0.15
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
-QNAP_TEST_ROOT = "Q:\\"
-TEST_FOLDER_PREFIX = "T"
-REPORT_EVA_ACC_RELATIVE = os.path.join("3-EVA-ACC")
+QNAP_TEST_ROOT = r"O:\1_BILTIR_TEST_DOSYALARI\2026\02 - DINIZ-ADIENT"
+TEST_FOLDER_PREFIX = "26-"
+REPORT_SUBDIR = os.path.join("REPORT FILES", "3-EVA-ACC")
+REPORT_EVA_ACC_RELATIVE = REPORT_SUBDIR
 TEMPLATE_EXCEL_NAME = "template.xlsx"
 
 
@@ -89,7 +90,7 @@ class SledAnalyzerApp(QMainWindow):
         lbl_format.setStyleSheet("color: gray; font-size: 11px;")
         control_layout.addWidget(lbl_format)
 
-        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince veri otomatik olarak 3-EVA-ACC/template.xlsx dosyasından alınır.")
+        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince kayıt/veri klasörü otomatik olarak REPORT FILES/3-EVA-ACC olur.")
         lbl_qnap.setWordWrap(True)
         lbl_qnap.setStyleSheet("color: #555; font-size: 11px;")
         control_layout.addWidget(lbl_qnap)
@@ -224,7 +225,7 @@ class SledAnalyzerApp(QMainWindow):
         # --- Export Area ---
         export_layout = QHBoxLayout()
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
-        self.txt_export = QLineEdit(QNAP_TEST_ROOT)
+        self.txt_export = QLineEdit(QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else "")
         export_layout.addWidget(self.txt_export)
 
         self.btn_browse = QPushButton("QNAP Test Seç / Gözat...")
@@ -344,10 +345,17 @@ class SledAnalyzerApp(QMainWindow):
                 self.apply_selected_test(test_info)
             return
 
+        if not os.path.isdir(QNAP_TEST_ROOT):
+            QMessageBox.warning(
+                self,
+                "QNAP yolu bulunamadı",
+                f"QNAP yolu erişilebilir değil:\n{QNAP_TEST_ROOT}\n\nElle kayıt klasörü seçebilirsiniz.",
+            )
+
         directory = QFileDialog.getExistingDirectory(
             self,
             "Kayıt Klasörü Seç",
-            self.txt_export.text() or QNAP_TEST_ROOT,
+            self.txt_export.text() or (QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else os.getcwd()),
         )
         if directory:
             self.apply_selected_directory(directory)
@@ -385,11 +393,6 @@ class SledAnalyzerApp(QMainWindow):
     def find_qnap_tests(self):
         root = QNAP_TEST_ROOT
         if not os.path.isdir(root):
-            QMessageBox.warning(
-                self,
-                "QNAP yolu bulunamadı",
-                f"QNAP kısayolu/yolu erişilebilir değil:\n{root}\n\nElle kayıt klasörü seçebilirsiniz.",
-            )
             return []
 
         tests = []
@@ -401,18 +404,18 @@ class SledAnalyzerApp(QMainWindow):
                 test_path = os.path.join(project_path, test_name)
                 if not os.path.isdir(test_path) or not test_name.startswith(TEST_FOLDER_PREFIX):
                     continue
-                eva_acc_dir = os.path.join(test_path, REPORT_EVA_ACC_RELATIVE)
-                template_path = os.path.join(eva_acc_dir, TEMPLATE_EXCEL_NAME)
+                export_dir = os.path.join(test_path, REPORT_SUBDIR)
+                if not os.path.isdir(export_dir):
+                    continue
+                template_path = os.path.join(export_dir, TEMPLATE_EXCEL_NAME)
                 tests.append({
-                    "label": f"{test_name}  |  {project_name}",
+                    "label": f"{test_name} — {project_name}",
                     "test_name": test_name,
                     "project_name": project_name,
                     "test_path": test_path,
-                    "export_dir": eva_acc_dir,
+                    "export_dir": export_dir,
                     "template_path": template_path,
                 })
-        if not tests:
-            QMessageBox.warning(self, "Test bulunamadı", f"{root} altında {TEST_FOLDER_PREFIX}xxx formatında test klasörü bulunamadı.")
         return tests
 
     def apply_selected_test(self, test_info):
