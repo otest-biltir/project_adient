@@ -30,9 +30,10 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 
-MAX_GRAPH_TIME_SEC = 0.15
+MAX_GRAPH_TIME_SEC = 0.14
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
@@ -197,13 +198,13 @@ class SledAnalyzerApp(QMainWindow):
         plot_layout = QVBoxLayout()
         plot_group.setLayout(plot_layout)
 
-        self.figure = Figure(figsize=(12.5, 8.8), facecolor="white")
+        self.figure = Figure(figsize=(8.27, 11.69), facecolor="white")
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
 
         # Tablo ayarı
         import matplotlib.gridspec as gridspec
-        self.gs = gridspec.GridSpec(2, 1, height_ratios=[5.2, 1.15]) # Grafiği büyütüp tabloyu dengede tutar
+        self.gs = gridspec.GridSpec(2, 1, height_ratios=[5.0, 1.35]) # A4 dikey çıktıda tablo için yeterli alan bırakır
         self.ax = self.figure.add_subplot(self.gs[0])
         self.ax_table = self.figure.add_subplot(self.gs[1])
         self.ax_table.axis('off')
@@ -490,9 +491,12 @@ class SledAnalyzerApp(QMainWindow):
 
     def _style_axes(self, ax, *, zero_line=True):
         ax.set_facecolor('#fbfcfe')
-        ax.grid(True, which='major', color='#cfd8dc', linewidth=0.8, alpha=0.75)
-        ax.grid(True, which='minor', color='#e8eef2', linewidth=0.5, alpha=0.65)
         ax.minorticks_on()
+        ax.xaxis.set_major_locator(MultipleLocator(0.01))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.002))
+        ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax.grid(True, which='major', color='#b7c3c9', linewidth=0.95, alpha=0.9)
+        ax.grid(True, which='minor', color='#dfe7eb', linewidth=0.55, alpha=0.85)
         for spine in ax.spines.values():
             spine.set_color('#607d8b')
             spine.set_linewidth(1.0)
@@ -557,7 +561,7 @@ class SledAnalyzerApp(QMainWindow):
         elif idx == 2:
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
-        self.figure.tight_layout()
+        self.figure.subplots_adjust(left=0.11, right=0.91, top=0.97, bottom=0.055, hspace=0.34)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
@@ -716,21 +720,46 @@ class SledAnalyzerApp(QMainWindow):
 
     def _build_table(self, cell_text, graph_name_text):
         col_labels = ["", "Max. Value", "Graph Name"]
-        table = self.ax_table.table(cellText=cell_text, colLabels=col_labels, loc='center', cellLoc='center', bbox=[0, 0, 1, 1])
+        table = self.ax_table.table(
+            cellText=cell_text,
+            colLabels=col_labels,
+            loc='center',
+            cellLoc='center',
+            colWidths=[0.28, 0.39, 0.33],
+            bbox=[0.015, 0.06, 0.97, 0.88],
+        )
         table.auto_set_font_size(False)
-        table.set_fontsize(10)
+        table.set_fontsize(9)
 
         for (row, col), cell in table.get_celld().items():
-            cell.set_text_props(ha='center', va='center')
+            cell.set_text_props(ha='center', va='center', linespacing=0.88)
+            cell.PAD = 0.03
             if row == 0:
                 cell.set_text_props(weight='bold', ha='center', va='center')
+                cell.set_height(0.22)
+            else:
+                cell.set_height(0.39)
 
-            if col == 2 and row == 2:
-                cell.visible_edges = 'BRL'
             if col == 2 and row == 1:
                 cell.visible_edges = 'TRL'
+                cell.get_text().set_text('')
+            if col == 2 and row == 2:
+                cell.visible_edges = 'BRL'
+                cell.get_text().set_text('')
 
-        self.ax_table.text(0.833, 0.333, graph_name_text, ha='center', va='center', fontsize=10, transform=self.ax_table.transAxes)
+        # Graph Name hücresi iki veri satırı gibi kullanılıyor; metni hücre bölgesinin
+        # tam ortasına, küçük satır aralığıyla koyarak üst satıra taşmasını engelle.
+        self.ax_table.text(
+            0.824,
+            0.39,
+            graph_name_text,
+            ha='center',
+            va='center',
+            fontsize=8.5,
+            linespacing=0.88,
+            clip_on=True,
+            transform=self.ax_table.transAxes,
+        )
 
     def export_plots(self):
         save_dir = self.export_dir
@@ -751,7 +780,7 @@ class SledAnalyzerApp(QMainWindow):
                 self.current_graph_idx = i
                 self.draw_current_graph()
                 path = os.path.join(save_dir, names[i])
-                self.figure.savefig(path, dpi=300, bbox_inches='tight')
+                self.figure.savefig(path, dpi=300, orientation='portrait')
 
             # Restore
             self.current_graph_idx = saved_idx
