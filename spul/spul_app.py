@@ -32,7 +32,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 
-MAX_GRAPH_TIME_SEC = 0.15
+MAX_GRAPH_TIME_SEC = 0.14
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
@@ -49,7 +49,7 @@ class SledAnalyzerApp(QMainWindow):
         super().__init__()
         self.main_window = main_window
         self.setWindowTitle("Sled Test Analyzer (Multi-Graph)")
-        self.resize(1500, 1050)
+        self.resize(1100, 1400)
 
         self.data_path = None
         self.test_locations = []
@@ -207,13 +207,13 @@ class SledAnalyzerApp(QMainWindow):
         plot_layout = QVBoxLayout()
         plot_group.setLayout(plot_layout)
 
-        self.figure = Figure(figsize=(14.5, 10.0), facecolor="white")
+        self.figure = Figure(figsize=(8.27, 11.69), facecolor="white")
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
 
         # Tablo ayarı
         import matplotlib.gridspec as gridspec
-        self.gs = gridspec.GridSpec(2, 1, height_ratios=[6.6, 1.0]) # Grafiği büyütüp tabloyu dengede tutar
+        self.gs = gridspec.GridSpec(2, 1, height_ratios=[7.4, 1.15]) # Grafiği büyütüp tabloyu dengede tutar
         self.ax = self.figure.add_subplot(self.gs[0])
         self.ax_table = self.figure.add_subplot(self.gs[1])
         self.ax_table.axis('off')
@@ -717,7 +717,7 @@ class SledAnalyzerApp(QMainWindow):
             ["SPUL", actual_val_str, ""],
             ["Target Spul", target_val_str, ""]
         ]
-        self._build_table(cell_text, "SPUL\nSpecific Accident Capability\n$f(t) = v^2 / t$")
+        self._build_table(cell_text, "SPUL\n$f(t)=v^2/t$\n[$m^2/s^3$]")
 
     def _draw_acc_vel(self, df_plot):
         if 'Acceleration' not in df_plot.columns or 'Velocity' not in df_plot.columns:
