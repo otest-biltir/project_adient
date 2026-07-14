@@ -668,7 +668,11 @@ class SledAnalyzerApp(QMainWindow):
         elif idx == 2:
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
-        self.figure.tight_layout()
+        self.figure.set_size_inches(8.27, 11.69, forward=True)
+        self.ax.set_box_aspect(0.75)
+        if self.ax2 is not None:
+            self.ax2.set_box_aspect(0.75)
+        self.figure.tight_layout(pad=1.2)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
@@ -717,7 +721,7 @@ class SledAnalyzerApp(QMainWindow):
             ["SPUL", actual_val_str, ""],
             ["Target Spul", target_val_str, ""]
         ]
-        self._build_table(cell_text, "SPUL\n$f(t)=v^2/t$\n[$m^2/s^3$]")
+        self._build_table(cell_text, "SPUL\n$f(t)=v^2/t$")
 
     def _draw_acc_vel(self, df_plot):
         if 'Acceleration' not in df_plot.columns or 'Velocity' not in df_plot.columns:
@@ -829,21 +833,20 @@ class SledAnalyzerApp(QMainWindow):
 
     def _build_table(self, cell_text, graph_name_text):
         col_labels = ["", "Max. Value", "Graph Name"]
+        cell_text = [row[:] for row in cell_text]
+        if cell_text:
+            cell_text[0][2] = graph_name_text
         table = self.ax_table.table(cellText=cell_text, colLabels=col_labels, loc='center', cellLoc='center', bbox=[0, 0, 1, 1])
         table.auto_set_font_size(False)
-        table.set_fontsize(10)
+        table.set_fontsize(9)
+        table.scale(1.0, 1.25)
 
         for (row, col), cell in table.get_celld().items():
             cell.set_text_props(ha='center', va='center')
             if row == 0:
                 cell.set_text_props(weight='bold', ha='center', va='center')
-
-            if col == 2 and row == 2:
-                cell.visible_edges = 'BRL'
-            if col == 2 and row == 1:
-                cell.visible_edges = 'TRL'
-
-        self.ax_table.text(0.833, 0.333, graph_name_text, ha='center', va='center', fontsize=10, transform=self.ax_table.transAxes)
+            if col == 2 and row > 0:
+                cell.set_text_props(fontsize=8.5, ha='center', va='center')
 
     def export_plots(self):
         save_dir = self.txt_export.text().strip()
@@ -863,8 +866,9 @@ class SledAnalyzerApp(QMainWindow):
             for i in range(3):
                 self.current_graph_idx = i
                 self.draw_current_graph()
+                self.figure.set_size_inches(8.27, 11.69, forward=True)
                 path = os.path.join(save_dir, names[i])
-                self.figure.savefig(path, dpi=300, bbox_inches='tight')
+                self.figure.savefig(path, dpi=300)
 
             # Restore
             self.current_graph_idx = saved_idx
