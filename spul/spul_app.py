@@ -228,12 +228,14 @@ class SledAnalyzerApp(QMainWindow):
         self.txt_export = QLineEdit(QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else "")
         export_layout.addWidget(self.txt_export)
 
-        self.btn_browse = QPushButton("QNAP Test Seç / Gözat...")
-        self.btn_browse.clicked.connect(self.browse_export_dir)
-        export_layout.addWidget(self.btn_browse)
-
-        self.btn_export = QPushButton("Tüm Grafikleri Kaydet (.png)")
+        self.btn_export = QPushButton("TEST EXPORT - Tüm Grafikleri Kaydet (.png)")
         self.btn_export.clicked.connect(self.export_plots)
+        self.btn_export.setMinimumHeight(52)
+        self.btn_export.setMinimumWidth(320)
+        self.btn_export.setStyleSheet(
+            "background-color: #1565C0; color: white; font-size: 16px; "
+            "font-weight: bold; padding: 12px 24px; border-radius: 6px;"
+        )
         export_layout.addWidget(self.btn_export)
 
         main_layout.addLayout(export_layout)
