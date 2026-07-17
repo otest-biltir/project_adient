@@ -25,14 +25,15 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel,
                              QMessageBox, QDoubleSpinBox, QGroupBox,
                              QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QAbstractItemView, QLineEdit, QFileDialog, QInputDialog)
+                             QAbstractItemView, QLineEdit, QFileDialog, QInputDialog,
+                             QTabWidget)
 from PyQt5.QtCore import Qt
 
 import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from matplotlib.ticker import AutoMinorLocator, MultipleLocator
+from matplotlib.ticker import AutoMinorLocator, FormatStrFormatter, MultipleLocator
 
 
 MAX_GRAPH_TIME_SEC = 0.14
@@ -66,10 +67,20 @@ class SledAnalyzerApp(QMainWindow):
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        main_layout = QVBoxLayout(main_widget)
+        main_layout = QHBoxLayout(main_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
 
-        # --- Top Area Layout ---
-        top_layout = QHBoxLayout()
+        # --- Left Sidebar Tabs ---
+        sidebar_tabs = QTabWidget()
+        sidebar_tabs.setMinimumWidth(330)
+        sidebar_tabs.setMaximumWidth(430)
+
+        # --- Right Graph Area ---
+        graph_area = QWidget()
+        graph_area_layout = QVBoxLayout(graph_area)
+        graph_area_layout.setContentsMargins(0, 0, 0, 0)
+        graph_area_layout.setSpacing(8)
 
         # --- Control Panel (Left) ---
         control_group = QGroupBox("Veri Yükleme ve Ayarlar")
@@ -108,7 +119,7 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_generate.clicked.connect(self.generate_plots)
         control_layout.addWidget(self.btn_generate)
 
-        top_layout.addWidget(control_group, stretch=1)
+        sidebar_tabs.addTab(control_group, "Veri")
 
         # --- Offset Table Panel (Right) ---
         offset_group = QGroupBox("Actual Offset Ayarları")
@@ -166,7 +177,7 @@ class SledAnalyzerApp(QMainWindow):
         offset_layout.addWidget(self.table_offset)
 
         # Universal Offset input at bottom of table
-        univ_layout = QHBoxLayout()
+        univ_layout = QVBoxLayout()
         univ_layout.addWidget(QLabel("Tüm actual grafiklere aynı offseti uygula:"))
         self.spin_universal = QDoubleSpinBox()
         self.spin_universal.setRange(-4000.0, 4000.0)
@@ -183,9 +194,7 @@ class SledAnalyzerApp(QMainWindow):
         univ_layout.addWidget(self.check_14ms)
 
         offset_layout.addLayout(univ_layout)
-        top_layout.addWidget(offset_group, stretch=2)
-
-        main_layout.addLayout(top_layout)
+        sidebar_tabs.addTab(offset_group, "Offset")
 
         # --- Graph Navigation ---
         nav_layout = QHBoxLayout()
@@ -205,30 +214,31 @@ class SledAnalyzerApp(QMainWindow):
         nav_layout.addWidget(self.lbl_graph_name)
         nav_layout.addWidget(self.btn_next)
 
-        main_layout.addLayout(nav_layout)
+        graph_area_layout.addLayout(nav_layout)
 
         # --- Plot Area (Matplotlib) ---
         plot_group = QGroupBox("Grafik Ekranı")
         plot_layout = QVBoxLayout()
         plot_group.setLayout(plot_layout)
 
-        self.figure = Figure(figsize=(8.27, 11.69), facecolor="white")
+        self.figure = Figure(figsize=(9.8, 6.6), facecolor="white")
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
 
         # Tablo ayarı
         import matplotlib.gridspec as gridspec
-        self.gs = gridspec.GridSpec(2, 1, height_ratios=[4.8, 1.35]) # A4 dikey yerleşimde tabloya biraz daha alan bırakır
+        self.gs = gridspec.GridSpec(2, 1, height_ratios=[4.4, 1.25]) # UI'da sağ panelin içine sığacak yatay yerleşim
         self.ax = self.figure.add_subplot(self.gs[0])
         self.ax_table = self.figure.add_subplot(self.gs[1])
         self.ax_table.axis('off')
 
         self.ax2 = None # Sağ eksen için
 
-        main_layout.addWidget(plot_group)
+        graph_area_layout.addWidget(plot_group, stretch=1)
 
         # --- Export Area ---
-        export_layout = QHBoxLayout()
+        export_tab = QWidget()
+        export_layout = QVBoxLayout(export_tab)
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
         self.txt_export = QLineEdit(QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else "")
         export_layout.addWidget(self.txt_export)
@@ -237,14 +247,18 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_export.setStyleSheet("background-color: #F57C00; color: white; font-weight: bold; padding: 12px;")
         self.btn_export.clicked.connect(self.export_plots)
         export_layout.addWidget(self.btn_export)
+        export_layout.addStretch()
 
-        main_layout.addLayout(export_layout)
+        sidebar_tabs.addTab(export_tab, "Export")
 
         # --- Author Info ---
         lbl_author = QLabel("Created by Efe Nakcı")
         lbl_author.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         lbl_author.setStyleSheet("color: gray; font-style: italic; font-size: 11px; padding-top: 5px;")
-        main_layout.addWidget(lbl_author)
+        graph_area_layout.addWidget(lbl_author)
+
+        main_layout.addWidget(sidebar_tabs)
+        main_layout.addWidget(graph_area, stretch=1)
 
     def load_data_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -584,15 +598,17 @@ class SledAnalyzerApp(QMainWindow):
 
     def _style_axes(self, ax, *, zero_line=True):
         ax.set_facecolor('#fbfcfe')
-        ax.xaxis.set_major_locator(MultipleLocator(0.01))
-        ax.xaxis.set_minor_locator(MultipleLocator(0.002))
+        ax.xaxis.set_major_locator(MultipleLocator(0.02))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.005))
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
         ax.yaxis.set_minor_locator(AutoMinorLocator(5))
         ax.grid(True, which='major', color='#b0bec5', linewidth=0.95, alpha=0.9)
         ax.grid(True, which='minor', color='#dfe7ec', linewidth=0.55, alpha=0.8)
         for spine in ax.spines.values():
             spine.set_color('#607d8b')
             spine.set_linewidth(1.0)
-        ax.tick_params(colors='#263238', labelsize=10)
+        ax.tick_params(colors='#263238', labelsize=9)
+        ax.tick_params(axis='x', labelrotation=0, pad=4)
         if zero_line:
             ax.axhline(0, color='#111111', linewidth=2.2, alpha=0.95, zorder=1)
 
@@ -653,11 +669,8 @@ class SledAnalyzerApp(QMainWindow):
         elif idx == 2:
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
-        self.figure.set_size_inches(8.27, 11.69, forward=True)
-        self.ax.set_box_aspect(0.75)
-        if self.ax2 is not None:
-            self.ax2.set_box_aspect(0.75)
-        self.figure.subplots_adjust(left=0.12, right=0.9, top=0.96, bottom=0.08, hspace=0.42)
+        self.figure.set_size_inches(9.8, 6.6, forward=True)
+        self.figure.subplots_adjust(left=0.08, right=0.92, top=0.94, bottom=0.12, hspace=0.34)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
@@ -699,8 +712,8 @@ class SledAnalyzerApp(QMainWindow):
             self._draw_peak_line(self.ax, max_target_time_sec, max_target_spul, target_color)
 
         # Tablo
-        actual_val_str = f"{max_actual_spul:.1f}  $m^2/s^3$   ({max_actual_time_sec*1000.0:.1f} ms)" if not pd.isna(max_actual_spul) else "-"
-        target_val_str = f"{max_target_spul:.1f}  $m^2/s^3$   ({max_target_time_ms:.1f} ms)" if not pd.isna(max_target_spul) and max_target_spul != "-" else "-"
+        actual_val_str = f"{max_actual_spul:.1f} $m^2/s^3$\n{max_actual_time_sec*1000.0:.1f} ms" if not pd.isna(max_actual_spul) else "-"
+        target_val_str = f"{max_target_spul:.1f} $m^2/s^3$\n{max_target_time_ms:.1f} ms" if not pd.isna(max_target_spul) and max_target_spul != "-" else "-"
 
         cell_text = [
             ["SPUL", actual_val_str, ""],
@@ -822,13 +835,13 @@ class SledAnalyzerApp(QMainWindow):
         table = self.ax_table.table(
             cellText=table_rows,
             colLabels=col_labels,
-            colWidths=[0.28, 0.36, 0.36],
+            colWidths=[0.26, 0.40, 0.34],
             loc='center',
             cellLoc='center',
             bbox=[0.02, 0.08, 0.96, 0.84],
         )
         table.auto_set_font_size(False)
-        table.set_fontsize(9)
+        table.set_fontsize(8.8)
         table.scale(1.0, 0.95)
 
         for (row, col), cell in table.get_celld().items():
