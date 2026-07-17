@@ -1,6 +1,8 @@
 import sys
 import os
 import subprocess
+import shutil
+from pathlib import Path
 
 def _check_and_install_dependencies():
     required_packages = ['pandas', 'numpy', 'PyQt5', 'matplotlib', 'openpyxl', 'xlrd']
@@ -30,15 +32,16 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 
-MAX_GRAPH_TIME_SEC = 0.15
+MAX_GRAPH_TIME_SEC = 0.14
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
-QNAP_TEST_ROOT = "Q:/"
-TEST_FOLDER_PREFIX = "TEST"
-REPORT_EVA_ACC_RELATIVE = os.path.join("3-EVA-ACC")
+QNAP_TEST_ROOT = r"O:\1_BILTIR_TEST_DOSYALARI\2026\02 - DINIZ-ADIENT"
+TEST_FOLDER_PREFIX = "26-"
+REPORT_EVA_ACC_RELATIVE = os.path.join("REPORT FILES", "3-EVA-ACC")
 TEMPLATE_EXCEL_NAME = "template.xlsx"
 
 
@@ -73,12 +76,18 @@ class SledAnalyzerApp(QMainWindow):
         control_layout = QVBoxLayout()
         control_group.setLayout(control_layout)
 
-        # File Selection
-        self.btn_data = QPushButton("Excel Veri Dosyası Yükle / Değiştir")
+        # File/Test Selection
+        self.btn_select_test = QPushButton("QNAP / Test Klasörü Seç (template.xlsx otomatik)")
+        self.btn_select_test.setStyleSheet("background-color: #1976D2; color: white; font-weight: bold; padding: 10px;")
+        self.btn_select_test.clicked.connect(self.browse_export_dir)
+        control_layout.addWidget(self.btn_select_test)
+
+        self.btn_data = QPushButton("Excel Dosyasını Elle Yükle / Değiştir")
         self.btn_data.clicked.connect(self.load_data_file)
+        control_layout.addWidget(self.btn_data)
+
         self.lbl_data = QLabel("Seçilmedi")
         self.lbl_data.setWordWrap(True)
-        control_layout.addWidget(self.btn_data)
         control_layout.addWidget(self.lbl_data)
 
         lbl_format = QLabel("Format: 3. satırdan itibaren A=Time(s), B=Target Acc(g), C=Target Hız(m/s), D=Actual Acc(g), E=Actual Hız(m/s)")
@@ -86,7 +95,7 @@ class SledAnalyzerApp(QMainWindow):
         lbl_format.setStyleSheet("color: gray; font-size: 11px;")
         control_layout.addWidget(lbl_format)
 
-        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince veri otomatik olarak 3-EVA-ACC/template.xlsx dosyasından alınır.")
+        lbl_qnap = QLabel(f"QNAP test kökü: {QNAP_TEST_ROOT}\nTest seçince veri otomatik olarak REPORT FILES/3-EVA-ACC/template.xlsx dosyasından alınır.")
         lbl_qnap.setWordWrap(True)
         lbl_qnap.setStyleSheet("color: #555; font-size: 11px;")
         control_layout.addWidget(lbl_qnap)
@@ -203,13 +212,13 @@ class SledAnalyzerApp(QMainWindow):
         plot_layout = QVBoxLayout()
         plot_group.setLayout(plot_layout)
 
-        self.figure = Figure(figsize=(12.5, 8.8), facecolor="white")
+        self.figure = Figure(figsize=(8.27, 11.69), facecolor="white")
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
 
         # Tablo ayarı
         import matplotlib.gridspec as gridspec
-        self.gs = gridspec.GridSpec(2, 1, height_ratios=[5.2, 1.15]) # Grafiği büyütüp tabloyu dengede tutar
+        self.gs = gridspec.GridSpec(2, 1, height_ratios=[4.8, 1.35]) # A4 dikey yerleşimde tabloya biraz daha alan bırakır
         self.ax = self.figure.add_subplot(self.gs[0])
         self.ax_table = self.figure.add_subplot(self.gs[1])
         self.ax_table.axis('off')
@@ -221,14 +230,11 @@ class SledAnalyzerApp(QMainWindow):
         # --- Export Area ---
         export_layout = QHBoxLayout()
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
-        self.txt_export = QLineEdit(QNAP_TEST_ROOT)
+        self.txt_export = QLineEdit(QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else "")
         export_layout.addWidget(self.txt_export)
 
-        self.btn_browse = QPushButton("QNAP Test Seç / Gözat...")
-        self.btn_browse.clicked.connect(self.browse_export_dir)
-        export_layout.addWidget(self.btn_browse)
-
-        self.btn_export = QPushButton("Tüm Grafikleri Kaydet (.png)")
+        self.btn_export = QPushButton("TEST EXPORT - Tüm Grafikleri Kaydet (.png)")
+        self.btn_export.setStyleSheet("background-color: #F57C00; color: white; font-weight: bold; padding: 12px;")
         self.btn_export.clicked.connect(self.export_plots)
         export_layout.addWidget(self.btn_export)
 
@@ -257,6 +263,76 @@ class SledAnalyzerApp(QMainWindow):
         self.export_dir = parent_dir
         self.selected_test_name = os.path.basename(os.path.dirname(parent_dir)) or os.path.splitext(os.path.basename(path))[0]
         self.txt_export.setText(parent_dir)
+
+    def _bundled_template_path(self):
+        return Path(__file__).resolve().parent.parent / TEMPLATE_EXCEL_NAME
+
+    def _template_fill_instructions(self):
+        return (
+            "template.xlsx doldurma formatı:\n\n"
+            "• İlk 2 satır başlık/not alanı olarak kalabilir.\n"
+            "• 3. satırdan itibaren veri yapıştırın.\n"
+            "• A: Time (s)\n"
+            "• B: Target Acceleration (g)\n"
+            "• C: Target Velocity (m/s)\n"
+            "• D: Actual Acceleration (g)\n"
+            "• E: Actual Velocity (m/s)\n\n"
+            "Target sütunlarına hedef pulse/hız, Actual sütunlarına ölçülen test verisi girilmelidir."
+        )
+
+    def _ensure_template_exists(self, template_path):
+        if os.path.isfile(template_path):
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "Template bulunamadı",
+            f"Bu test klasöründe {TEMPLATE_EXCEL_NAME} yok:\n{template_path}\n\n"
+            "Buraya otomatik boş template.xlsx kurulsun mu?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return False
+
+        source_template = self._bundled_template_path()
+        if not source_template.is_file():
+            QMessageBox.critical(self, "Template kaynağı bulunamadı", f"Repo içindeki template bulunamadı:\n{source_template}")
+            return False
+
+        os.makedirs(os.path.dirname(template_path), exist_ok=True)
+        shutil.copy2(source_template, template_path)
+        QMessageBox.information(
+            self,
+            "Template kuruldu",
+            f"Boş template.xlsx hedef klasöre kopyalandı:\n{template_path}\n\n{self._template_fill_instructions()}",
+        )
+        return True
+
+    def _resolve_template_from_directory(self, directory):
+        directory = os.path.abspath(directory)
+        direct_template = os.path.join(directory, TEMPLATE_EXCEL_NAME)
+        if os.path.isfile(direct_template) or os.path.basename(directory) == os.path.basename(REPORT_EVA_ACC_RELATIVE):
+            return directory, direct_template
+
+        report_dir = os.path.join(directory, REPORT_EVA_ACC_RELATIVE)
+        report_template = os.path.join(report_dir, TEMPLATE_EXCEL_NAME)
+        if os.path.isdir(report_dir) or os.path.basename(directory).startswith(TEST_FOLDER_PREFIX):
+            return report_dir, report_template
+
+        return directory, direct_template
+
+    def apply_selected_directory(self, directory):
+        export_dir, template_path = self._resolve_template_from_directory(directory)
+        self.txt_export.setText(export_dir)
+        self.export_dir = export_dir
+        self.selected_test_name = os.path.basename(os.path.normpath(directory)) or "Seçilen klasör"
+        if self._ensure_template_exists(template_path):
+            self.data_path = template_path
+            self.lbl_data.setText(f"{self.selected_test_name} / {TEMPLATE_EXCEL_NAME}")
+        else:
+            self.data_path = None
+            self.lbl_data.setText("template.xlsx bulunamadı")
 
     def apply_universal_offset(self, val):
         row_offset = self.ms_to_rows(val)
@@ -301,13 +377,11 @@ class SledAnalyzerApp(QMainWindow):
 
         directory = QFileDialog.getExistingDirectory(
             self,
-            "Kayıt Klasörü Seç",
+            "Test veya REPORT FILES/3-EVA-ACC Klasörü Seç",
             self.txt_export.text() or QNAP_TEST_ROOT,
         )
         if directory:
-            self.txt_export.setText(directory)
-            self.export_dir = directory
-            self.selected_test_name = os.path.basename(directory.rstrip(os.sep)) or "Seçilen klasör"
+            self.apply_selected_directory(directory)
 
     def find_qnap_tests(self):
         root = QNAP_TEST_ROOT
@@ -329,9 +403,11 @@ class SledAnalyzerApp(QMainWindow):
                 if not os.path.isdir(test_path) or not test_name.startswith(TEST_FOLDER_PREFIX):
                     continue
                 eva_acc_dir = os.path.join(test_path, REPORT_EVA_ACC_RELATIVE)
+                if not os.path.isdir(eva_acc_dir):
+                    continue
                 template_path = os.path.join(eva_acc_dir, TEMPLATE_EXCEL_NAME)
                 tests.append({
-                    "label": f"{test_name}  |  {project_name}",
+                    "label": f"{test_name} — {project_name}",
                     "test_name": test_name,
                     "project_name": project_name,
                     "test_path": test_path,
@@ -346,20 +422,16 @@ class SledAnalyzerApp(QMainWindow):
         export_dir = test_info["export_dir"]
         template_path = test_info["template_path"]
         if not os.path.isdir(export_dir):
-            QMessageBox.warning(self, "Klasör bulunamadı", f"3-EVA-ACC klasörü bulunamadı:\n{export_dir}")
-            return
+            os.makedirs(export_dir, exist_ok=True)
         self.txt_export.setText(export_dir)
-        if os.path.isfile(template_path):
+        self.export_dir = export_dir
+        self.selected_test_name = test_info["test_name"]
+        if self._ensure_template_exists(template_path):
             self.data_path = template_path
-            self.export_dir = export_dir
-            self.selected_test_name = test_info["test_name"]
             self.lbl_data.setText(f"{test_info['test_name']} / {TEMPLATE_EXCEL_NAME}")
         else:
             self.data_path = None
-            self.export_dir = export_dir
-            self.selected_test_name = test_info["test_name"]
             self.lbl_data.setText("template.xlsx bulunamadı")
-            QMessageBox.warning(self, "Excel bulunamadı", f"Template Excel bulunamadı:\n{template_path}")
 
     def set_local_offset(self, idx, val):
         row_offset = self.ms_to_rows(val)
@@ -434,15 +506,6 @@ class SledAnalyzerApp(QMainWindow):
                 QMessageBox.warning(self, "Uyarı", "Excel dosyasında 3. satırdan itibaren okunabilir veri bulunamadı.")
                 return False
 
-            # Formül gereksinimi kontrol et (Spul = V^2 / t)
-            if 'Velocity' in self.df_actual.columns and 'Time' in self.df_actual.columns:
-                self.df_actual['Spul_Raw'] = np.where(
-                    (self.df_actual['Time'] != 0) & (self.df_actual['Time'].notna()),
-                    (self.df_actual['Velocity']**2) / self.df_actual['Time'],
-                    0
-                )
-                self.df_actual['Spul'] = self.df_actual['Spul_Raw']
-
             self.df_target = self.df_actual[['Time', 'Target Acceleration', 'Target Velocity']].copy()
             if 'Target Velocity' in self.df_target.columns and 'Time' in self.df_target.columns:
                 self.df_target['Spul_Raw'] = np.where(
@@ -465,14 +528,15 @@ class SledAnalyzerApp(QMainWindow):
         df_plot = self.df_actual.copy()
         df_plot['Offset_Time'] = df_plot['Time']
         value_shift = -row_offset
-        # Velocity/Acceleration ile birlikte Spul'u da satır bazlı kaydırıyoruz.
-        # Spul'u kaydırılmış velocity + kaydırılmamış time ile tekrar hesaplamak,
-        # pik zamanını bir örnekleme adımı (0.4 ms) kaydırabiliyordu.
-        for col in ['Velocity', 'Acceleration', 'Spul', 'Spul_Raw']:
+        # SPUL'u hazır seri olarak kaydırma; offsetli Velocity ve mevcut zaman
+        # ekseni üzerinden yeniden hesapla ki offset değişimi SPUL değerine de yansısın.
+        for col in ['Velocity', 'Acceleration']:
             if col in df_plot.columns:
                 df_plot[col] = df_plot[col].shift(value_shift)
-        if 'Spul_Raw' in df_plot.columns:
-            df_plot['Spul'] = df_plot['Spul_Raw']
+        if 'Velocity' in df_plot.columns:
+            valid_time = (df_plot['Offset_Time'] > 0) & df_plot['Offset_Time'].notna()
+            df_plot['Spul'] = np.nan
+            df_plot.loc[valid_time, 'Spul'] = (df_plot.loc[valid_time, 'Velocity'] ** 2) / df_plot.loc[valid_time, 'Offset_Time']
         return df_plot[(df_plot['Offset_Time'] >= 0) & (df_plot['Offset_Time'] <= MAX_GRAPH_TIME_SEC)]
 
     def apply_offset_to_target(self):
@@ -520,9 +584,11 @@ class SledAnalyzerApp(QMainWindow):
 
     def _style_axes(self, ax, *, zero_line=True):
         ax.set_facecolor('#fbfcfe')
-        ax.grid(True, which='major', color='#cfd8dc', linewidth=0.8, alpha=0.75)
-        ax.grid(True, which='minor', color='#e8eef2', linewidth=0.5, alpha=0.65)
-        ax.minorticks_on()
+        ax.xaxis.set_major_locator(MultipleLocator(0.01))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.002))
+        ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax.grid(True, which='major', color='#b0bec5', linewidth=0.95, alpha=0.9)
+        ax.grid(True, which='minor', color='#dfe7ec', linewidth=0.55, alpha=0.8)
         for spine in ax.spines.values():
             spine.set_color('#607d8b')
             spine.set_linewidth(1.0)
@@ -557,8 +623,8 @@ class SledAnalyzerApp(QMainWindow):
             return
         y0, y1 = ax.get_ylim()
         baseline = 0 if y0 <= 0 <= y1 else y0
-        ax.vlines(x=x, ymin=baseline, ymax=y, colors=color, linestyles='--', linewidth=1.6, alpha=0.9, zorder=4)
-        ax.scatter([x], [y], color=color, edgecolor='white', linewidth=0.8, s=36, zorder=5)
+        ax.vlines(x=x, ymin=baseline, ymax=y, colors=color, linestyles='--', linewidth=1.9, alpha=0.95, zorder=4)
+        ax.scatter([x], [y], color=color, edgecolor='white', linewidth=0.9, s=46, zorder=5)
 
     def _cleanup_axes(self):
         self.ax.clear()
@@ -587,7 +653,11 @@ class SledAnalyzerApp(QMainWindow):
         elif idx == 2:
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
-        self.figure.tight_layout()
+        self.figure.set_size_inches(8.27, 11.69, forward=True)
+        self.ax.set_box_aspect(0.75)
+        if self.ax2 is not None:
+            self.ax2.set_box_aspect(0.75)
+        self.figure.subplots_adjust(left=0.12, right=0.9, top=0.96, bottom=0.08, hspace=0.42)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
@@ -636,7 +706,7 @@ class SledAnalyzerApp(QMainWindow):
             ["SPUL", actual_val_str, ""],
             ["Target Spul", target_val_str, ""]
         ]
-        self._build_table(cell_text, "SPUL\nSpecific Accident Capability\n$f(t) = v^2 / t$")
+        self._build_table(cell_text, "SPUL\n$f(t)=v^2/t$")
 
     def _draw_acc_vel(self, df_plot):
         if 'Acceleration' not in df_plot.columns or 'Velocity' not in df_plot.columns:
@@ -678,7 +748,7 @@ class SledAnalyzerApp(QMainWindow):
         self._set_y_limits_with_zero(self.ax, (acc_series, 'Acceleration'), min_span=1.0)
         self._set_y_limits_with_zero(self.ax2, (vel_series, 'Velocity'), min_span=0.2)
         self._style_axes(self.ax)
-        self._style_axes(self.ax2)
+        self._style_axes(self.ax2, zero_line=False)
         self._draw_peak_line(self.ax, max_acc_t, max_acc, acc_color)
         self._draw_peak_line(self.ax2, max_vel_t, max_vel, vel_color)
 
@@ -746,24 +816,40 @@ class SledAnalyzerApp(QMainWindow):
 
     def _build_table(self, cell_text, graph_name_text):
         col_labels = ["", "Max. Value", "Graph Name"]
-        table = self.ax_table.table(cellText=cell_text, colLabels=col_labels, loc='center', cellLoc='center', bbox=[0, 0, 1, 1])
+        table_rows = [row[:] for row in cell_text]
+        if table_rows:
+            table_rows[0][2] = graph_name_text
+        table = self.ax_table.table(
+            cellText=table_rows,
+            colLabels=col_labels,
+            colWidths=[0.28, 0.36, 0.36],
+            loc='center',
+            cellLoc='center',
+            bbox=[0.02, 0.08, 0.96, 0.84],
+        )
         table.auto_set_font_size(False)
-        table.set_fontsize(10)
+        table.set_fontsize(9)
+        table.scale(1.0, 0.95)
 
         for (row, col), cell in table.get_celld().items():
+            cell.PAD = 0.035
             cell.set_text_props(ha='center', va='center')
             if row == 0:
                 cell.set_text_props(weight='bold', ha='center', va='center')
+                cell.set_height(0.22)
+            else:
+                cell.set_height(0.34)
 
             if col == 2 and row == 2:
                 cell.visible_edges = 'BRL'
             if col == 2 and row == 1:
                 cell.visible_edges = 'TRL'
-
-        self.ax_table.text(0.833, 0.333, graph_name_text, ha='center', va='center', fontsize=10, transform=self.ax_table.transAxes)
+            if col == 2 and row == 1:
+                cell.get_text().set_wrap(True)
+                cell.get_text().set_clip_on(True)
 
     def export_plots(self):
-        save_dir = self.export_dir or self.txt_export.text()
+        save_dir = self.txt_export.text().strip()
         if not save_dir or not os.path.exists(save_dir) or not os.path.isdir(save_dir):
             QMessageBox.warning(self, "Hata", "Lütfen önce test numarasını seçin. Kayıt konumu otomatik olarak testin 3-EVA-ACC klasörü olacaktır.")
             return
@@ -781,7 +867,8 @@ class SledAnalyzerApp(QMainWindow):
                 self.current_graph_idx = i
                 self.draw_current_graph()
                 path = os.path.join(save_dir, names[i])
-                self.figure.savefig(path, dpi=300, bbox_inches='tight')
+                self.figure.set_size_inches(8.27, 11.69, forward=True)
+                self.figure.savefig(path, dpi=300, orientation='portrait')
 
             # Restore
             self.current_graph_idx = saved_idx
