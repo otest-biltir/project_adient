@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel,
                              QMessageBox, QDoubleSpinBox, QGroupBox,
                              QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QAbstractItemView)
+                             QAbstractItemView, QLineEdit, QFileDialog, QInputDialog)
 from PyQt5.QtCore import Qt
 
 import matplotlib
@@ -36,6 +36,10 @@ MAX_GRAPH_TIME_SEC = 0.15
 DATA_INTERVAL_SEC = 0.0004
 MS_PER_ROW = DATA_INTERVAL_SEC * 1000.0
 ROWS_FOR_14MS = round(14.0 / MS_PER_ROW)
+QNAP_TEST_ROOT = "Q:/"
+TEST_FOLDER_PREFIX = "TEST"
+REPORT_EVA_ACC_RELATIVE = os.path.join("3-EVA-ACC")
+TEMPLATE_EXCEL_NAME = "template.xlsx"
 
 
 class SledAnalyzerApp(QMainWindow):
@@ -46,6 +50,8 @@ class SledAnalyzerApp(QMainWindow):
         self.resize(1280, 960)
 
         self.data_path = None
+        self.export_dir = None
+        self.selected_test_name = None
         self.test_locations = []
         self.df_actual = None
         self.df_target = None
@@ -72,7 +78,7 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_data.clicked.connect(self.load_data_file)
         self.lbl_data = QLabel("Seçilmedi")
         self.lbl_data.setWordWrap(True)
-        control_layout.addWidget(self.btn_select_test)
+        control_layout.addWidget(self.btn_data)
         control_layout.addWidget(self.lbl_data)
 
         lbl_format = QLabel("Format: 3. satırdan itibaren A=Time(s), B=Target Acc(g), C=Target Hız(m/s), D=Actual Acc(g), E=Actual Hız(m/s)")
@@ -234,6 +240,24 @@ class SledAnalyzerApp(QMainWindow):
         lbl_author.setStyleSheet("color: gray; font-style: italic; font-size: 11px; padding-top: 5px;")
         main_layout.addWidget(lbl_author)
 
+    def load_data_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Excel Veri Dosyası Seç",
+            self.data_path or self.txt_export.text() or "",
+            "Excel Dosyaları (*.xlsx *.xls);;Tüm Dosyalar (*)",
+        )
+        if not path:
+            return
+
+        self.data_path = path
+        self.lbl_data.setText(path)
+
+        parent_dir = os.path.dirname(path)
+        self.export_dir = parent_dir
+        self.selected_test_name = os.path.basename(os.path.dirname(parent_dir)) or os.path.splitext(os.path.basename(path))[0]
+        self.txt_export.setText(parent_dir)
+
     def apply_universal_offset(self, val):
         row_offset = self.ms_to_rows(val)
         normalized_ms = row_offset * MS_PER_ROW
@@ -282,6 +306,8 @@ class SledAnalyzerApp(QMainWindow):
         )
         if directory:
             self.txt_export.setText(directory)
+            self.export_dir = directory
+            self.selected_test_name = os.path.basename(directory.rstrip(os.sep)) or "Seçilen klasör"
 
     def find_qnap_tests(self):
         root = QNAP_TEST_ROOT
@@ -325,9 +351,13 @@ class SledAnalyzerApp(QMainWindow):
         self.txt_export.setText(export_dir)
         if os.path.isfile(template_path):
             self.data_path = template_path
+            self.export_dir = export_dir
+            self.selected_test_name = test_info["test_name"]
             self.lbl_data.setText(f"{test_info['test_name']} / {TEMPLATE_EXCEL_NAME}")
         else:
             self.data_path = None
+            self.export_dir = export_dir
+            self.selected_test_name = test_info["test_name"]
             self.lbl_data.setText("template.xlsx bulunamadı")
             QMessageBox.warning(self, "Excel bulunamadı", f"Template Excel bulunamadı:\n{template_path}")
 
@@ -733,7 +763,7 @@ class SledAnalyzerApp(QMainWindow):
         self.ax_table.text(0.833, 0.333, graph_name_text, ha='center', va='center', fontsize=10, transform=self.ax_table.transAxes)
 
     def export_plots(self):
-        save_dir = self.export_dir
+        save_dir = self.export_dir or self.txt_export.text()
         if not save_dir or not os.path.exists(save_dir) or not os.path.isdir(save_dir):
             QMessageBox.warning(self, "Hata", "Lütfen önce test numarasını seçin. Kayıt konumu otomatik olarak testin 3-EVA-ACC klasörü olacaktır.")
             return
