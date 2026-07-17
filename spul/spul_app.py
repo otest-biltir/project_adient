@@ -674,7 +674,7 @@ class SledAnalyzerApp(QMainWindow):
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
         self.figure.set_size_inches(9.8, 6.6, forward=True)
-        self.figure.subplots_adjust(left=0.07, right=0.98, top=0.96, bottom=0.12, hspace=0.32)
+        self.figure.subplots_adjust(left=0.10, right=0.94, top=0.86, bottom=0.10, hspace=0.38)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
@@ -702,10 +702,10 @@ class SledAnalyzerApp(QMainWindow):
         self.ax.set_ylabel("Spul [(m/s)²/s]")
         self.ax.legend(
             loc='upper center',
-            bbox_to_anchor=(0.5, -0.15),
+            bbox_to_anchor=(0.5, 1.10),
             ncol=2,
             frameon=False,
-            fontsize=14,
+            fontsize=11,
             handlelength=2.0
         )
         self._set_time_xlim(df_plot, df_target_plot)
@@ -754,10 +754,10 @@ class SledAnalyzerApp(QMainWindow):
         self.ax.legend(
             lines, labels,
             loc='upper center',
-            bbox_to_anchor=(0.5, -0.15),
+            bbox_to_anchor=(0.5, 1.10),
             ncol=2,
             frameon=False,
-            fontsize=14,
+            fontsize=11,
             handlelength=2.0
         )
         self._set_time_xlim(acc_series, vel_series)
@@ -809,10 +809,10 @@ class SledAnalyzerApp(QMainWindow):
         self.ax.legend(
             lines, labels,
             loc='upper center',
-            bbox_to_anchor=(0.5, -0.15),
+            bbox_to_anchor=(0.5, 1.10),
             ncol=2,
             frameon=False,
-            fontsize=14,
+            fontsize=11,
             handlelength=2.0
         )
         self._set_time_xlim(df_plot, df_target_plot)
