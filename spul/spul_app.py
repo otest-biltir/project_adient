@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QMessageBox, QDoubleSpinBox, QGroupBox,
                              QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
                              QAbstractItemView, QLineEdit, QFileDialog, QInputDialog,
-                             QTabWidget)
+                             QSizePolicy)
 from PyQt5.QtCore import Qt
 
 import matplotlib
@@ -71,10 +71,13 @@ class SledAnalyzerApp(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # --- Left Sidebar Tabs ---
-        sidebar_tabs = QTabWidget()
-        sidebar_tabs.setMinimumWidth(330)
-        sidebar_tabs.setMaximumWidth(430)
+        # --- Left Sidebar Panel ---
+        sidebar = QWidget()
+        sidebar.setMinimumWidth(360)
+        sidebar.setMaximumWidth(440)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(8)
 
         # --- Right Graph Area ---
         graph_area = QWidget()
@@ -119,7 +122,7 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_generate.clicked.connect(self.generate_plots)
         control_layout.addWidget(self.btn_generate)
 
-        sidebar_tabs.addTab(control_group, "Veri")
+        sidebar_layout.addWidget(control_group)
 
         # --- Offset Table Panel (Right) ---
         offset_group = QGroupBox("Actual Offset Ayarları")
@@ -194,7 +197,7 @@ class SledAnalyzerApp(QMainWindow):
         univ_layout.addWidget(self.check_14ms)
 
         offset_layout.addLayout(univ_layout)
-        sidebar_tabs.addTab(offset_group, "Offset")
+        sidebar_layout.addWidget(offset_group)
 
         # --- Graph Navigation ---
         nav_layout = QHBoxLayout()
@@ -223,7 +226,9 @@ class SledAnalyzerApp(QMainWindow):
 
         self.figure = Figure(figsize=(9.8, 6.6), facecolor="white")
         self.canvas = FigureCanvas(self.figure)
-        plot_layout.addWidget(self.canvas)
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.canvas.updateGeometry()
+        plot_layout.addWidget(self.canvas, stretch=1)
 
         # Tablo ayarı
         import matplotlib.gridspec as gridspec
@@ -237,8 +242,8 @@ class SledAnalyzerApp(QMainWindow):
         graph_area_layout.addWidget(plot_group, stretch=1)
 
         # --- Export Area ---
-        export_tab = QWidget()
-        export_layout = QVBoxLayout(export_tab)
+        export_group = QGroupBox("Export")
+        export_layout = QVBoxLayout(export_group)
         export_layout.addWidget(QLabel("Kayıt Dizini:"))
         self.txt_export = QLineEdit(QNAP_TEST_ROOT if os.path.isdir(QNAP_TEST_ROOT) else "")
         export_layout.addWidget(self.txt_export)
@@ -247,9 +252,8 @@ class SledAnalyzerApp(QMainWindow):
         self.btn_export.setStyleSheet("background-color: #F57C00; color: white; font-weight: bold; padding: 12px;")
         self.btn_export.clicked.connect(self.export_plots)
         export_layout.addWidget(self.btn_export)
-        export_layout.addStretch()
-
-        sidebar_tabs.addTab(export_tab, "Export")
+        sidebar_layout.addWidget(export_group)
+        sidebar_layout.addStretch()
 
         # --- Author Info ---
         lbl_author = QLabel("Created by Efe Nakcı")
@@ -257,7 +261,7 @@ class SledAnalyzerApp(QMainWindow):
         lbl_author.setStyleSheet("color: gray; font-style: italic; font-size: 11px; padding-top: 5px;")
         graph_area_layout.addWidget(lbl_author)
 
-        main_layout.addWidget(sidebar_tabs)
+        main_layout.addWidget(sidebar)
         main_layout.addWidget(graph_area, stretch=1)
 
     def load_data_file(self):
@@ -670,14 +674,14 @@ class SledAnalyzerApp(QMainWindow):
             self._draw_acc_target_acc(df_plot, df_target_plot)
 
         self.figure.set_size_inches(9.8, 6.6, forward=True)
-        self.figure.subplots_adjust(left=0.08, right=0.92, top=0.94, bottom=0.12, hspace=0.34)
+        self.figure.subplots_adjust(left=0.07, right=0.98, top=0.96, bottom=0.12, hspace=0.32)
         self.canvas.draw()
 
     def _draw_spul(self, df_plot, df_target_plot=None):
         if 'Spul' not in df_plot.columns:
             return
 
-        actual_color = '#FFD700'
+        actual_color = '#c77c00'
         target_color = '#2a52be'
 
         actual_spul = self._series_data(df_plot, 'Spul', trim_trailing_zeros=True)
@@ -712,14 +716,14 @@ class SledAnalyzerApp(QMainWindow):
             self._draw_peak_line(self.ax, max_target_time_sec, max_target_spul, target_color)
 
         # Tablo
-        actual_val_str = f"{max_actual_spul:.1f} $m^2/s^3$\n{max_actual_time_sec*1000.0:.1f} ms" if not pd.isna(max_actual_spul) else "-"
-        target_val_str = f"{max_target_spul:.1f} $m^2/s^3$\n{max_target_time_ms:.1f} ms" if not pd.isna(max_target_spul) and max_target_spul != "-" else "-"
+        actual_val_str = f"{max_actual_spul:.1f} $m^2/s^3$ ({max_actual_time_sec*1000.0:.1f} ms)" if not pd.isna(max_actual_spul) else "-"
+        target_val_str = f"{max_target_spul:.1f} $m^2/s^3$ ({max_target_time_ms:.1f} ms)" if not pd.isna(max_target_spul) and max_target_spul != "-" else "-"
 
         cell_text = [
             ["SPUL", actual_val_str, ""],
             ["Target Spul", target_val_str, ""]
         ]
-        self._build_table(cell_text, "SPUL\n$f(t)=v^2/t$")
+        self._build_table(cell_text, "SPUL ($f(t)=v^2/t$)")
 
     def _draw_acc_vel(self, df_plot):
         if 'Acceleration' not in df_plot.columns or 'Velocity' not in df_plot.columns:
@@ -835,13 +839,13 @@ class SledAnalyzerApp(QMainWindow):
         table = self.ax_table.table(
             cellText=table_rows,
             colLabels=col_labels,
-            colWidths=[0.26, 0.40, 0.34],
+            colWidths=[0.25, 0.45, 0.30],
             loc='center',
             cellLoc='center',
             bbox=[0.02, 0.08, 0.96, 0.84],
         )
         table.auto_set_font_size(False)
-        table.set_fontsize(8.8)
+        table.set_fontsize(9)
         table.scale(1.0, 0.95)
 
         for (row, col), cell in table.get_celld().items():
